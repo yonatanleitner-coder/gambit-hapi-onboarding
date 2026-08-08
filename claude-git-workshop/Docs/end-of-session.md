@@ -4,9 +4,17 @@
 Build a chat-first interface to the bball-GM NBA Trade Machine where conversation is the primary way to construct, refine, and validate a two-team, multi-asset trade, with a live GUI mirror and verdicts rendered legibly in both chat and GUI — proving a clean, bounded LLM harness + tool boundary, not a clever prompt. See `docs/human-plan.md`.
 
 ## Status
-- **Done:** Human Thinking (MVP scoped via clarifying questions). `docs/human-plan.md` and `docs/ai-plan.md` drafted, revised once, and current. Full API contract confirmed from `bball-gm-engine-teardown.md`.
-- **In progress:** AI Plan → AI Execute **gate**. Plans await final ratification; three low-stakes steers open (see Open questions).
+- **Done:** Human Thinking (MVP scoped via clarifying questions). `docs/human-plan.md` and `docs/ai-plan.md` drafted, revised once, and current. Full API contract confirmed from `bball-gm-engine-teardown.md`. **AI Plan §12 task 1 (API spike) complete** — see below.
+- **In progress:** AI Plan → AI Execute gate cleared for task 1 only; tasks 2–12 not started. Three low-stakes steers still open (see Open questions).
 - **Blocked / not started:** No application code yet. `docs/qa-plan.md` and this file's final version are downstream. Own repo not yet created (still working from a clone of the template).
+
+## API spike (AI Plan §12 task 1) — done, 2026-08-08
+Three live calls against `POST https://bball-gm.com/api/trades/validate`, no mock — confirmed against `bball-gm-engine-teardown.md` field-for-field, **no schema drift found**:
+- **Legal** — real IDs (team `2` Celtics/BOS, team `20` Knicks/NYK, players `16998` Neemias Queta ↔ `17338` Andre Drummond) → `200 {isValid:true, ...}`, full shape as documented.
+- **Illegal** — same teams, player `17329` Paul George for Drummond (deliberately lopsided) → `200 {isValid:false, ...}`; confirms `isValid` exists both top-level *and* per-team, with `violations` populated only for the failing team.
+- **Hard error** — 1-team request (API requires ≥2) → `400 {"error": "..."}`.
+- **Nuance not obvious from the doc:** the `400` channel's `error` value is sometimes a JSON-stringified Zod issue array, not guaranteed prose. Pinned in the schema's docstring so `respond` doesn't assume it's directly narratable — needs a plain-language wrapper, not a pass-through.
+- **Schema pinned** in `contracts.py` (`TeamLeg`, `ValidateRequest`, `TeamVerdict`, `Verdict`, `ApiHardError`) — currently in the session scratchpad only, not yet in a repo (see Continue from here).
 
 ## Key decisions (this session)
 - **Stack:** Python/FastAPI backend + React/Vite (TS) frontend, **single Render web service** (FastAPI serves built SPA + `/api`; validate called server-side, no CORS, no key in browser). Chose Python because the harness is the graded core and it's the author's strength.
@@ -35,10 +43,10 @@ Build a chat-first interface to the bball-GM NBA Trade Machine where conversatio
 - **Human Plan edits:** replace illustrative money figures with real synthetic values (backfill from `GET /api/players` during the API spike); confirm the "why I'm the right person" framing reads in the author's voice.
 
 ## Continue from here
-- **Repo:** create own **public** repo via "Use this template" → clone → work on a **feature branch** (never `main`).
-- **Files present:** `docs/human-plan.md`, `docs/ai-plan.md`. App not started.
-- **First task:** AI Plan §12 **task 1 — API spike.** POST one known trade to `https://bball-gm.com/api/trades/validate`, assert the response matches `bball-gm-engine-teardown.md`, pin the schema in `contracts.py`. Then proceed tasks 2→12.
-- **Reference:** `bball-gm-engine-teardown.md` (repo root) — request/response schema. Base URL `https://bball-gm.com/api` (open, no key).
+- **Repo:** create own **public** repo via "Use this template" → clone → work on a **feature branch** (never `main`). Still outstanding — the spike ran from the template clone, scratch-only.
+- **Files present:** `docs/human-plan.md`, `docs/ai-plan.md`, this file. App not started. `contracts.py` (pinned schema from the spike) sits in the session scratchpad, not yet committed anywhere — move it into the real repo under `backend/contracts.py` once the repo exists (task 3 per the file layout in `ai-plan.md` §10).
+- **Next task:** AI Plan §12 **task 2 — catalog + resolution.** Preload `/teams`, `/players`, `/draft-picks`; fuzzy name→id resolution with suggestions. Then proceed tasks 3→12.
+- **Reference:** `bball-gm-engine-teardown.md` (repo root) — request/response schema, confirmed live in the task 1 spike with no drift. Base URL `https://bball-gm.com/api` (open, no key).
 - **Commands:** none yet (scaffold in task 3+).
 - **Demo URL:** none yet.
 
