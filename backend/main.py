@@ -49,6 +49,19 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/api/teams")
+async def list_teams(request: Request):
+    """Catalog only reaches the frontend through SSE payloads, which carry
+    team ids but not names (state_diff's snapshot is id-only -- see
+    tools.py's _snapshot). Without this, the trade panel would have to
+    show raw integers instead of "Boston Celtics"."""
+    catalog: Catalog = request.app.state.catalog
+    return [
+        {"id": t.id, "name": t.name, "city": t.city, "abbreviation": t.abbreviation, "fullName": t.full_name}
+        for t in catalog.teams.values()
+    ]
+
+
 class ChatRequest(BaseModel):
     session_id: str
     message: str

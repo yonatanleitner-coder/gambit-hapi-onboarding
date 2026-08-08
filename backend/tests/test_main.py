@@ -47,6 +47,16 @@ def test_health_endpoint():
     assert resp.json() == {"status": "ok"}
 
 
+def test_teams_endpoint_returns_catalog_teams():
+    wire_fake_state(FakeLLMClient([]))
+    client = TestClient(app)
+    resp = client.get("/api/teams")
+    assert resp.status_code == 200
+    teams = {t["id"]: t for t in resp.json()}
+    assert teams[2]["fullName"] == "Boston Celtics"
+    assert teams[20]["abbreviation"] == "NYK"
+
+
 def test_chat_endpoint_streams_sse_events():
     wire_fake_state(FakeLLMClient([
         tool_call_msg(("set_teams", {"team_a": "Celtics", "team_b": "Knicks"})),
