@@ -20,6 +20,15 @@ PICKS = [
     Pick(id=12062, originalTeamId=20, originalTeamName="Knicks",
          currentTeamId=2, currentTeamName="Celtics", year=2027, round=1,
          isTradable=True),
+    # Two distinct picks, same year+round, both currently held by Boston --
+    # a real, live-confirmed scenario (a team's own pick plus another
+    # team's for the same draft slot).
+    Pick(id=12100, originalTeamId=2, originalTeamName="Celtics",
+         currentTeamId=2, currentTeamName="Celtics", year=2031, round=1,
+         isTradable=True),
+    Pick(id=12413, originalTeamId=23, originalTeamName="76ers",
+         currentTeamId=2, currentTeamName="Celtics", year=2031, round=1,
+         isTradable=True),
 ]
 
 
@@ -78,6 +87,22 @@ def test_resolve_pick_by_descriptor():
     pick = cat.resolve_pick("2027 first", team_id=2)
     assert isinstance(pick, Pick) and pick.id == 12062
     assert pick.descriptor == "2027 1st (via Knicks)"
+
+
+def test_resolve_pick_ambiguous_year_round_returns_error_not_first_match():
+    cat = make_catalog()
+    result = cat.resolve_pick("2031 first", team_id=2)
+    assert isinstance(result, ResolutionError)
+    assert sorted(result.suggestions) == ["2031 1st", "2031 1st (via 76ers)"]
+
+
+def test_resolve_pick_tolerates_natural_phrasing():
+    # A model asked to move "their 2027 first-round pick" may pass that
+    # phrasing straight through rather than normalizing to "2027 first" --
+    # word-boundary matching must still find "first" inside "first-round".
+    cat = make_catalog()
+    pick = cat.resolve_pick("their 2027 first-round pick", team_id=2)
+    assert isinstance(pick, Pick) and pick.id == 12062
 
 
 def test_resolve_pick_wrong_team_suggests_available():

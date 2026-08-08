@@ -35,10 +35,10 @@ TOOLS_BY_PHASE: dict[Phase, list[str]] = {
 DESCRIPTIONS: dict[str, str] = {
     "set_teams": "Set the two teams involved in the trade. Only usable before any teams are set.",
     "add_player": "Add a player to the trade, moving from one team to the other.",
-    "add_pick": "Add a draft pick to the trade, moving from one team to the other.",
-    "route_pick": "Change which team an already-added pick is currently routed to.",
+    "add_pick": "Add a draft pick to the trade, moving from one team to the other. Specify the pick as '<year> <first|second>', e.g. '2027 first'.",
+    "route_pick": "Change which team an already-added pick is currently routed to. Specify the pick as '<year> <first|second>', e.g. '2027 first'.",
     "remove_player": "Remove a player from the trade.",
-    "remove_pick": "Remove a draft pick from the trade.",
+    "remove_pick": "Remove a draft pick from the trade. Specify the pick as '<year> <first|second>', e.g. '2027 first'.",
     "request_verdict": "Validate the current trade against the bball-GM engine and get a legality verdict. Requires two teams and at least one asset.",
 }
 

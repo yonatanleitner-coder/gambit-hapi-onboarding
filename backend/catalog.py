@@ -159,7 +159,14 @@ class Catalog:
         round_num = None
         q_lower = query.lower()
         for token, rnd in ORDINAL_TO_ROUND.items():
-            if token in q_lower.split():
+            # Word-boundary search, not exact-token split match: a model
+            # asked to move "their 2027 first-round pick" may pass that
+            # phrasing straight through rather than normalizing to "2027
+            # first" -- \b matches around the hyphen, so "first" still
+            # matches inside "first-round" without also matching "1" or
+            # "2" as substrings of the year itself (PICK_YEAR_RE handles
+            # the year separately; \b prevents e.g. "1" matching inside "2027").
+            if re.search(rf"\b{re.escape(token)}\b", q_lower):
                 round_num = rnd
                 break
         if year_match is None or round_num is None:
@@ -168,9 +175,20 @@ class Catalog:
                 suggestions=[p.descriptor for p in team_picks],
             )
         year = int(year_match.group())
-        for p in team_picks:
-            if p.year == year and p.round == round_num:
-                return p
+        matches = [p for p in team_picks if p.year == year and p.round == round_num]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            # A team can hold more than one pick for the same year+round
+            # via trades (e.g. its own 1st plus another team's, both
+            # arriving in the same draft) -- silently returning whichever
+            # happened to come first in catalog order picked the wrong
+            # one in practice (confirmed live). Ambiguous by year+round
+            # alone; disambiguate by descriptor same as a name conflict.
+            return ResolutionError(
+                error=f"multiple {year} round-{round_num} picks held by this team",
+                suggestions=[p.descriptor for p in matches],
+            )
         return ResolutionError(
             error=f"no {year} round-{round_num} pick held by this team",
             suggestions=[p.descriptor for p in team_picks],
