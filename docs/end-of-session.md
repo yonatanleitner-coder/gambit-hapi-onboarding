@@ -6,7 +6,8 @@ Build a chat-first interface to the bball-GM NBA Trade Machine where conversatio
 ## Status
 - **Done:** Human Thinking (MVP scoped via clarifying questions). `docs/human-plan.md` and `docs/ai-plan.md` drafted, revised once, and current. Full API contract confirmed from `bball-gm-engine-teardown.md`. **AI Plan §12 task 1 (API spike) complete** — see below.
 - **In progress:** AI Plan → AI Execute gate cleared for task 1 only; tasks 2–12 not started. Three low-stakes steers still open (see Open questions).
-- **Blocked / not started:** No application code yet. `docs/qa-plan.md` and this file's final version are downstream. Own repo not yet created (still working from a clone of the template).
+- **Blocked / not started:** No application code yet. `docs/qa-plan.md` and this file's final version are downstream.
+- **Repo housekeeping:** `origin` was already `yonatanleitner-coder/gambit-hapi-onboarding` (own repo, not the `gambit-lab` template) on feature branch `yonatan_project` — the repo-creation step was already done, correcting a stale note in an earlier version of this file. Docs and `CLAUDE.md` relocated from `claude-git-workshop/Docs/` to root `docs/` + root `CLAUDE.md` to match the delivery spec (project root, alongside `backend/`/`frontend/` to come); unrelated instructor-workshop PDFs/Figma file stayed in `claude-git-workshop/`.
 
 ## API spike (AI Plan §12 task 1) — done, 2026-08-08
 Three live calls against `POST https://bball-gm.com/api/trades/validate`, no mock — confirmed against `bball-gm-engine-teardown.md` field-for-field, **no schema drift found**:
@@ -43,8 +44,8 @@ Three live calls against `POST https://bball-gm.com/api/trades/validate`, no moc
 - **Human Plan edits:** replace illustrative money figures with real synthetic values (backfill from `GET /api/players` during the API spike); confirm the "why I'm the right person" framing reads in the author's voice.
 
 ## Continue from here
-- **Repo:** create own **public** repo via "Use this template" → clone → work on a **feature branch** (never `main`). Still outstanding — the spike ran from the template clone, scratch-only.
-- **Files present:** `docs/human-plan.md`, `docs/ai-plan.md`, this file. App not started. `contracts.py` (pinned schema from the spike) sits in the session scratchpad, not yet committed anywhere — move it into the real repo under `backend/contracts.py` once the repo exists (task 3 per the file layout in `ai-plan.md` §10).
+- **Repo:** done — own public repo, feature branch `yonatan_project`. No further action needed here.
+- **Files present:** `docs/human-plan.md`, `docs/ai-plan.md`, this file, root `CLAUDE.md`. App not started. `contracts.py` (pinned schema from the spike) sits in the session scratchpad, not yet committed — move it into `backend/contracts.py` when task 3 (state + contracts) scaffolds the backend.
 - **Next task:** AI Plan §12 **task 2 — catalog + resolution.** Preload `/teams`, `/players`, `/draft-picks`; fuzzy name→id resolution with suggestions. Then proceed tasks 3→12.
 - **Reference:** `bball-gm-engine-teardown.md` (repo root) — request/response schema, confirmed live in the task 1 spike with no drift. Base URL `https://bball-gm.com/api` (open, no key).
 - **Commands:** none yet (scaffold in task 3+).
