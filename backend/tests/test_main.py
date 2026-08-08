@@ -8,7 +8,7 @@ directly instead.
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.catalog import Catalog, Player, Team
+from backend.catalog import Catalog, Pick, Player, Team
 from backend.harness import SessionStore
 from backend.main import FRONTEND_DIST, app
 from backend.providers import MockProvider
@@ -26,10 +26,14 @@ PLAYERS = [
     Player(id=16998, name="Neemias Queta", teamId=2, teamName="Celtics",
            salary=2667944, noTradeClause=False, signingStatus="active"),
 ]
+PICKS = [
+    Pick(id=12062, originalTeamId=20, originalTeamName="Knicks",
+         currentTeamId=2, currentTeamName="Celtics", year=2027, round=1, isTradable=True),
+]
 
 
 def make_catalog() -> Catalog:
-    return Catalog(TEAMS, PLAYERS, [])
+    return Catalog(TEAMS, PLAYERS, PICKS)
 
 
 def wire_fake_state(llm):
@@ -56,6 +60,24 @@ def test_teams_endpoint_returns_catalog_teams():
     teams = {t["id"]: t for t in resp.json()}
     assert teams[2]["fullName"] == "Boston Celtics"
     assert teams[20]["abbreviation"] == "NYK"
+
+
+def test_team_assets_endpoint_returns_closed_list_for_that_team():
+    wire_fake_state(FakeLLMClient([]))
+    client = TestClient(app)
+    resp = client.get("/api/teams/2/assets")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [p["name"] for p in body["players"]] == ["Neemias Queta"]
+    assert [p["descriptor"] for p in body["picks"]] == ["2027 1st (via Knicks)"]
+
+
+def test_team_assets_endpoint_empty_for_team_with_no_assets():
+    wire_fake_state(FakeLLMClient([]))
+    client = TestClient(app)
+    resp = client.get("/api/teams/20/assets")
+    assert resp.status_code == 200
+    assert resp.json() == {"players": [], "picks": []}
 
 
 def test_chat_endpoint_streams_sse_events():

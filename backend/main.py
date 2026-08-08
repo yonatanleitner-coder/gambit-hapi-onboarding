@@ -88,6 +88,26 @@ async def list_teams(request: Request):
     ]
 
 
+@app.get("/api/teams/{team_id}/assets")
+async def team_assets(team_id: int, request: Request):
+    """A closed list of the given team's players and picks -- lets the
+    frontend offer a bball-GM-style picker for users who don't know exact
+    names, without adding a second state-mutation path: the picker only
+    drafts a chat message (see frontend/src/AssetPicker.tsx), the same
+    tool-calling loop still resolves and mutates state either way."""
+    catalog: Catalog = request.app.state.catalog
+    return {
+        "players": [
+            {"id": p.id, "name": p.name, "salary": p.salary}
+            for p in catalog.players.values() if p.teamId == team_id
+        ],
+        "picks": [
+            {"id": p.id, "descriptor": p.descriptor, "year": p.year, "round": p.round}
+            for p in catalog.picks.values() if p.currentTeamId == team_id
+        ],
+    }
+
+
 class ChatRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=200)
     message: str = Field(min_length=1, max_length=MAX_MESSAGE_LENGTH)

@@ -121,8 +121,11 @@ input {
 }
 
 .app-header__mark {
-  font-size: 28px;
-  line-height: 1;
+  height: 34px;
+  width: auto;
+  display: block;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
 }
 
 .app-header__title h1 {
@@ -185,9 +188,47 @@ input {
 
 .chat__empty {
   margin: auto;
-  max-width: 420px;
+  max-width: 560px;
   text-align: center;
   color: var(--text-muted);
+  padding: 12px 0;
+}
+
+.chat__empty-logo {
+  height: 76px;
+  width: auto;
+  margin: 0 auto 8px;
+  display: block;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.chat__empty-title {
+  margin: 0 0 10px;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.chat__empty p {
+  margin: 0 auto;
+  max-width: 460px;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.chat__how-to {
+  text-align: left;
+  max-width: 420px;
+  margin: 16px auto;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+.chat__how-to li {
+  margin-bottom: 2px;
 }
 
 .chat__examples {
@@ -195,6 +236,142 @@ input {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.chat__examples-label {
+  margin: 0 0 4px;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  text-align: left;
+}
+
+/* ---------- team picker (landing) ---------- */
+.team-picker {
+  margin: 18px auto 4px;
+  max-width: 460px;
+  padding: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-align: left;
+}
+
+.team-picker__label {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.team-picker__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.team-picker__row select {
+  flex: 1 1 150px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.team-picker__vs {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-faint);
+  text-transform: uppercase;
+}
+
+.team-picker__row button {
+  border: none;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.team-picker__row button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---------- asset picker (trade panel) ---------- */
+.asset-picker__toggle {
+  display: inline-block;
+  margin-top: 6px;
+}
+
+.asset-picker {
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.asset-picker__kind {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.asset-picker__kind button {
+  flex: 1;
+  padding: 5px 0;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.asset-picker__kind button.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.asset-picker__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.asset-picker__row select {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.asset-picker__row button[type='button']:not(.link-button) {
+  border: none;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.asset-picker__row button[type='button']:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .chat__example {

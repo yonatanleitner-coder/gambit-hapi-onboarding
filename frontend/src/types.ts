@@ -26,6 +26,24 @@ export interface TeamInfo {
   fullName: string
 }
 
+export interface TeamAssetPlayer {
+  id: number
+  name: string
+  salary: number
+}
+
+export interface TeamAssetPick {
+  id: number
+  descriptor: string
+  year: number
+  round: number
+}
+
+export interface TeamAssets {
+  players: TeamAssetPlayer[]
+  picks: TeamAssetPick[]
+}
+
 export interface TeamVerdict {
   teamId: number
   teamName: string

@@ -11,17 +11,15 @@ const PHASE_LABEL: Record<string, string> = {
 }
 
 export default function App() {
-  const { teams, messages, trade, sending, pendingTrace, allEvents, costTotal, send } = useTradeStream()
+  const { teams, teamAssets, messages, trade, sending, pendingTrace, allEvents, costTotal, send } = useTradeStream()
 
   return (
     <div className="app">
       <header className="app-header">
         <div className="app-header__title">
-          <span className="app-header__mark" aria-hidden>
-            🏀
-          </span>
+          <img className="app-header__mark" src="/gambit-mark.png" alt="Gambit" />
           <div>
-            <h1>Trade Machine</h1>
+            <h1>Gambit Trade Machine</h1>
             <p>Chat-first NBA trades</p>
           </div>
         </div>
@@ -29,8 +27,8 @@ export default function App() {
       </header>
 
       <main className="app-body">
-        <Chat messages={messages} sending={sending} pendingTrace={pendingTrace} onSend={send} />
-        <TradePanel trade={trade} teams={teams} />
+        <Chat teams={teams} messages={messages} sending={sending} pendingTrace={pendingTrace} onSend={send} />
+        <TradePanel trade={trade} teams={teams} teamAssets={teamAssets} onSend={send} sending={sending} />
       </main>
 
       <TraceStrip events={allEvents} costTotal={costTotal} />

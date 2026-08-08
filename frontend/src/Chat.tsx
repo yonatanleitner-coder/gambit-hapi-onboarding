@@ -1,14 +1,45 @@
 import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
+import { TeamPicker } from './TeamPicker'
 import { describeEvent } from './TraceStrip'
 import { VerdictCard } from './VerdictCard'
-import type { ChatMessage, TraceEvent } from './types'
+import type { ChatMessage, TeamInfo, TraceEvent } from './types'
 
 const EXAMPLE_PROMPTS = [
   'Set up a trade between the Celtics and the Knicks',
   "Send Boston's 2027 first to New York for Julius Randle",
   'Why is that illegal?',
 ]
+
+function Landing({ teams, onSend, sending }: { teams: Record<number, TeamInfo>; onSend: (text: string) => void; sending: boolean }) {
+  return (
+    <div className="chat__empty">
+      <img className="chat__empty-logo" src="/gambit-logo.png" alt="Gambit — NBA Trade Engine" />
+      <h2 className="chat__empty-title">Build an NBA trade by talking, not clicking</h2>
+      <p>
+        Describe a trade in plain English — teams, players, draft picks — and this assistant builds it for you,
+        checks it against real salary-cap rules, and explains the verdict in plain language. The panel on the
+        right mirrors the trade live as you go; nothing here is invented, every number traces back to a real
+        validation.
+      </p>
+      <ol className="chat__how-to">
+        <li>Say which two teams are trading.</li>
+        <li>Say who or what each side sends — a player, a draft pick, or pick from the list below.</li>
+        <li>Ask for a verdict — legality and money math show up right here, and in the panel.</li>
+        <li>Keep refining: "actually, route that pick to Boston instead."</li>
+      </ol>
+      <TeamPicker teams={teams} onSend={onSend} disabled={sending} />
+      <div className="chat__examples">
+        <p className="chat__examples-label">Or just type something like:</p>
+        {EXAMPLE_PROMPTS.map((p) => (
+          <button key={p} type="button" className="chat__example" onClick={() => onSend(p)} disabled={sending}>
+            {p}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function MessageTrace({ trace }: { trace: TraceEvent[] }) {
   const [open, setOpen] = useState(false)
@@ -79,11 +110,13 @@ function PendingBubble({ trace }: { trace: TraceEvent[] }) {
 }
 
 export function Chat({
+  teams,
   messages,
   sending,
   pendingTrace,
   onSend,
 }: {
+  teams: Record<number, TeamInfo>
   messages: ChatMessage[]
   sending: boolean
   pendingTrace: TraceEvent[]
@@ -105,18 +138,7 @@ export function Chat({
   return (
     <section className="chat">
       <div className="chat__list" ref={listRef}>
-        {messages.length === 0 && (
-          <div className="chat__empty">
-            <p>Describe a trade in plain English — the mouse is optional.</p>
-            <div className="chat__examples">
-              {EXAMPLE_PROMPTS.map((p) => (
-                <button key={p} type="button" className="chat__example" onClick={() => onSend(p)}>
-                  {p}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        {messages.length === 0 && <Landing teams={teams} onSend={onSend} sending={sending} />}
         {messages.map((m) => (
           <Bubble key={m.id} message={m} />
         ))}
