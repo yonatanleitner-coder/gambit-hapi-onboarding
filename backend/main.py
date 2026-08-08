@@ -12,13 +12,19 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .catalog import Catalog
 from .config import PROVIDER
 from .harness import SessionStore, handle_chat
 from .llm import LLMClient
 from .providers import BballGmProvider, MockProvider
+
+# A single chat turn costs real Anthropic tokens -- an unbounded message
+# body is a cheap cost-amplification and context-stuffing vector (A06:
+# insecure design). 4000 chars is generous for a trade-building utterance
+# and cheap to raise later if a real user ever hits it.
+MAX_MESSAGE_LENGTH = 4000
 
 
 @asynccontextmanager
@@ -39,9 +45,22 @@ app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],  # Vite dev server (task 8)
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Baseline hardening headers (A02: security misconfiguration). Cheap,
+    no new dependency, and safe defaults for an app with no inline scripts,
+    no third-party frames, and a single deploy origin serving both the API
+    and the built SPA."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 @app.get("/api/health")
@@ -63,8 +82,8 @@ async def list_teams(request: Request):
 
 
 class ChatRequest(BaseModel):
-    session_id: str
-    message: str
+    session_id: str = Field(min_length=1, max_length=200)
+    message: str = Field(min_length=1, max_length=MAX_MESSAGE_LENGTH)
 
 
 @app.post("/api/chat")

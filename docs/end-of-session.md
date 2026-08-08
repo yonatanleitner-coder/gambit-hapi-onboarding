@@ -157,3 +157,70 @@ All 5 cases pass live. Full backend suite with a key present: 77 passed (0 skipp
 - Keep `VerdictProvider` fallback + `source` badge; keep `MockProvider` **deterministic** (tests depend on it).
 - Keep the deferred items deferred — don't let Mem0 / Supabase / routing / Langfuse creep back without a stated reason.
 - Graph stays ≤5 nodes.
+- **New this session — do not undo:** `harness.py`'s exception handler must keep logging the real error server-side and returning a generic message to the client; `SessionStore` must stay capacity-bounded; `ChatRequest` must keep length constraints on `session_id`/`message`; CORS methods/headers must stay explicit (not `["*"]`); the security-headers middleware in `main.py` must stay on all responses.
+
+---
+
+# Checkpoint — 2026-08-09: requirements re-evaluation, data-engineering review, security hardening
+
+Before continuing to task 10, the human asked for a stop-and-check: re-read the original brief against the current state of the project, review it through a data-engineering/data-science lens, harden it against the OWASP-style "Top 10 2025" categories the human specified, and smoke-test that nothing broke. No new features were built; task 10/11 were deliberately **not** started — this was a checkpoint, not forward progress on the build order.
+
+## Requirements re-evaluation (`gambit-onboarding-task.md` vs current state)
+
+Read the full brief fresh against `docs/human-plan.md`, `docs/ai-plan.md`, and the repo as it stands. Findings:
+
+- **Confirmed aligned:** the harness/tool-boundary requirement (the brief's explicit hardest-graded criterion) is met — NL flows through a phase-gated tool-calling loop, no regex/mega-prompt-JSON path exists anywhere. Verdict renders in prose in both chat and GUI. Explainability ("why illegal?") and traceability (trace strip) are both built and live-verified. Golden cases satisfy the brief's measurable-behavior ask.
+- **Real gap found: `README.md` is still the onboarding-task's own README** (the one describing *this exercise*, pointing at `gambit-onboarding-task.md` and the workshop materials) — it was never replaced with a README describing *the built project* (architecture, how to run locally, how it's deployed, demo link). The brief and its acceptance checklist both require this ("README explains the project clearly enough for a stranger to run it"). Flagged for the task-12 docs pass, not fixed now — a real project README is nontrivial content, not a config tweak, and belongs with the other end-of-build docs work.
+- **Confirmed still open, not a surprise:** `docs/qa-plan.md` (this session closes this gap — see below), the Playwright happy path (task 10, bonus criterion), and deployment (task 11) — all already tracked as pending in this file and in `CLAUDE.md`. Nothing newly broken, just re-confirmed still outstanding.
+- **No scope drift found** against the deferred-scope list (Mem0, Supabase, model routing, Langfuse, 3+ teams, sign-and-trade, auth, mobile) — nothing in the current codebase re-introduces any of them.
+
+## Data-engineering / data-science review
+
+Reviewed the data flow end to end (catalog load → per-turn LLM calls → tool execution → validation → SSE) for efficiency and for whether anything belongs in a faster-retrieval store. Conclusions:
+
+- **The catalog (`Catalog.load()`) is already the right pattern at this scale** — 30 teams / ~500 players / ~450 picks fits trivially in memory; preloading once at startup and resolving names locally (zero network calls per turn except `request_verdict`) is exactly what a cache/DB would buy you, without the operational cost of one. No change warranted; this validates `ai-plan.md`'s original design rather than finding a gap.
+- **`VerdictCache` / durable storage remain correctly deferred.** Re-confirmed the reasoning in `human-plan.md`: `/trades/validate` is a free API call, and the expensive resource (LLM tokens) is spent *before* a validate call even happens, so a cache would save latency, not cost — not worth a DB for a single-session prototype. No change.
+- **Real inefficiency found, not fixed this session (flagged for a future task, not urgent):** prompt caching (`llm.py`'s `_cached_system`) only marks a `cache_control` breakpoint on the **system+tools** prefix. The **conversation message history** — which grows every turn and is resent in full on every `interpret`/`respond` call — is never cached. Anthropic supports up to 4 cache breakpoints per request; adding one at the end of the prior turn's message history (i.e., caching "everything before this turn's new content") would let a long session's growing history hit the cache too, not just the static system+tools block. This compounds: a 10-turn conversation currently re-sends (and re-bills, at the non-cached rate) all 9 prior turns' worth of tokens on every subsequent call. Not implemented now because it touches the hot path of a fully-tested, live-verified core (`graph.py`/`llm.py`) and deserves its own golden-case re-verification pass rather than a drive-by edit during a security checkpoint — but it's the single highest-leverage "make the data stream more effective" lever available, and cheap once picked up (a few lines in `llm.py`, no new dependency).
+- **`SessionStore` was genuinely unbounded** (a plain `dict`, never evicted) — this is both a data-engineering smell (unbounded in-memory growth with no lifecycle) and a security issue (see A06 below). Fixed this session: capacity-bounded with LRU-style eviction (see Security section).
+- **Cost/usage data is currently ephemeral** (only ever lives in the SSE stream for the browser to render, never persisted). This is intentionally the `Langfuse`-deferred seam per `human-plan.md` — re-confirmed correct to leave deferred at prototype volume, not a gap.
+
+## Security review — OWASP-style Top 10 2025
+
+Reviewed the backend (`main.py`, `harness.py`, `graph.py`, `providers.py`, `tools.py`, `llm.py`) and frontend (`Chat.tsx`'s `react-markdown` usage) against each category the human specified. Fixed what was cheap and real; documented the rest as accepted risk for a prototype with no auth in scope.
+
+| Category | Finding | Action |
+|---|---|---|
+| **A01 Broken Access Control** | `session_id` is client-supplied, unauthenticated, and never validated as belonging to any identity — by design (auth is explicitly out of scope, `human-plan.md`). Any client can address any session it can guess/reuse. | **Accepted risk**, not fixed — matches the brief's stated scope. Documented here so it isn't mistaken for an oversight later. |
+| **A02 Security Misconfiguration** | CORS allowed `methods=["*"]`/`headers=["*"]`; no baseline response headers. | **Fixed** — `main.py`: CORS narrowed to `["GET","POST"]`/`["Content-Type"]`; added a `security_headers` middleware setting `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` on every response. |
+| **A03 Software Supply Chain Failures** | Backend deps already exact-pinned (`requirements.txt`, `==`). Frontend deps use caret ranges but `package-lock.json` is committed, so `npm ci` (already the documented install command) installs exact locked versions. No SAST/dependency-audit step exists. | **No code change** — pinning/lockfile discipline already correct. Documented `pip-audit` / `npm audit` as a recommended manual pre-release step in `docs/qa-plan.md`'s known gaps (no new dependency needed to run them). |
+| **A04 Cryptographic Failures** | No data at rest requiring encryption (no DB); the only secret is `ANTHROPIC_API_KEY`, held in a gitignored `.env`, read from the environment, never logged or echoed (re-verified). HTTPS is Render's responsibility once deployed. | **No gap found.** |
+| **A05 Injection** | No SQL, shell, or `eval` anywhere. Tool arguments from the model are pydantic-validated before touching any executor, and executors only do local dict/name lookups — never string-built queries or commands. The one injection-shaped surface (a user steering the model's *narration* via prompt injection) is already structurally bounded: the system prompt forbids inventing numbers, and every figure the model narrates is grounded in a real `Verdict`/tool-result payload it can't fabricate around — worst case is misleading prose, not a wrong verdict. | **No gap found** — this is a case where the existing pydantic-contracts design (built for correctness, not security) already closes the security-relevant version of the same problem. |
+| **A06 Insecure Design** | Two real gaps: (1) `SessionStore` was unbounded — many distinct `session_id`s (malicious or just organic traffic) grow memory forever. (2) `ChatRequest.message` had no length limit — an oversized message is a cheap way to inflate a real, billed Anthropic call. | **Fixed** — `harness.py`: `SessionStore` now takes `max_sessions` (default 1000) and evicts the least-recently-touched session once full (`OrderedDict` + `move_to_end`). `main.py`: `ChatRequest.message` capped at 4000 chars, `session_id` at 200, both via pydantic `Field` (empty strings also now rejected). |
+| **A07 Authentication Failures** | No authentication exists — by design, out of scope. Nothing found pretending to be auth that isn't (no fake security theater to correct). | **Accepted risk**, matches scope. |
+| **A08 Software or Data Integrity Failures** | Verdict data integrity is already strong: pydantic contracts at every boundary mean a shape change in the real API fails a test, not silently. No CI pipeline exists to enforce this automatically on every push (out of scope per the brief — "you do not need a full CI pipeline"). | **No code change** — existing design already addresses the security-relevant part of this category; CI itself is explicitly not required. |
+| **A09 Security Logging & Alerting Failures** | No logging existed anywhere in the backend — an unhandled exception was visible only as a string sent to the client (see A10) and left no server-side trace at all. | **Fixed** — `harness.py` now logs the full exception server-side (`logger.exception(...)`) before returning a generic message to the client, and logs session evictions at `info` level. This is the minimum viable "someone can find out what broke" without adding an external logging dependency. |
+| **A10 Mishandling of Exceptional Conditions** | The single most concrete finding this session: `handle_chat`'s catch-all exception handler sent `str(exc)` — the raw Python exception text — directly to the browser as the error event's `message`. This can leak internals (library repr, partial stack detail) to any client who can trigger a server-side error. | **Fixed** — the client now always receives a fixed, generic message ("Something went wrong on our end. Please try again."); the real exception goes to the server log only (see A09). Verified via a new test (`test_harness.py`) that a `GraphRecursionError`'s class name never appears in the SSE stream. |
+
+**Frontend note (checked, not a finding):** `Chat.tsx` renders the model's prose via `react-markdown` with no `rehype-raw` plugin installed — by default `react-markdown` does not render raw HTML/`<script>` tags from its input, so a prompt-injected "output raw HTML" attempt can't become a stored/reflected XSS. Confirmed this is the actual default behavior (no raw-HTML plugin is in `frontend/package.json`), not just an assumption.
+
+**Tests added:** `test_harness.py` — session-store eviction (LRU-order + capacity), sanitized error message; `test_main.py` — oversized/empty message rejection (422), presence of baseline security headers. Full suite: 76 passed + 6 skipped without a key (was 71 + 6; the 5 new tests all pass with no key required — none of this touches the LLM-gated paths).
+
+## Smoke test (post-hardening)
+
+Ran the real server (`uvicorn`, real `ANTHROPIC_API_KEY`, real bball-GM) end to end after the changes above, not just the unit suite:
+- `GET /api/health` → `200`, carries the new `x-content-type-options`/`x-frame-options` headers.
+- `GET /api/teams` → real catalog data, unaffected.
+- `POST /api/chat` with an empty `message` → `422`, clean pydantic validation error, no server involvement.
+- `POST /api/chat` with a 4001-character `message` → `422`, same clean rejection.
+- `POST /api/chat` with a real trade-building utterance ("Set up a trade between the Boston Celtics and the New York Knicks") → real Claude call, `set_teams` tool call fired, `state_diff` correct, `cost` events present, `assistant` narration correct, stream ended on `done`. Confirms the hardening changes didn't regress the live path, not just the mocked one.
+
+Server stopped cleanly after verification; no process left running.
+
+## Open questions (added this session)
+- Prompt-cache breakpoint on growing conversation history (see data-engineering section) — worth a dedicated task with its own golden-case re-run, not done here.
+- README replacement — deferred to task 12 as originally planned, but now explicitly confirmed (not assumed) to still be the template's README.
+
+## Continue from here (updated)
+- `docs/qa-plan.md` now exists — both automated and manual sections, per this session's explicit requirement that the QA plan cover both, not lean on one alone.
+- Next task is still **AI Plan §12 task 10 — Playwright happy path**, followed by task 11 (deploy) and task 12 (docs pass, including the README rewrite flagged above).
+- No new environment setup needed beyond what task 8/9 already documented (portable Node + PATH export, `.venv` + `.env`).

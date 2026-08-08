@@ -75,6 +75,30 @@ def test_chat_endpoint_streams_sse_events():
     assert body.rstrip().endswith("event: done\ndata: {}")
 
 
+def test_chat_endpoint_rejects_empty_message():
+    wire_fake_state(FakeLLMClient([]))
+    client = TestClient(app)
+    resp = client.post("/api/chat", json={"session_id": "s3", "message": ""})
+    assert resp.status_code == 422
+
+
+def test_chat_endpoint_rejects_oversized_message():
+    # An unbounded message body is a cheap cost-amplification vector against
+    # a real per-token-billed LLM call (A06: insecure design).
+    wire_fake_state(FakeLLMClient([]))
+    client = TestClient(app)
+    resp = client.post("/api/chat", json={"session_id": "s4", "message": "x" * 4001})
+    assert resp.status_code == 422
+
+
+def test_responses_carry_baseline_security_headers():
+    wire_fake_state(FakeLLMClient([]))
+    client = TestClient(app)
+    resp = client.get("/api/health")
+    assert resp.headers["x-content-type-options"] == "nosniff"
+    assert resp.headers["x-frame-options"] == "DENY"
+
+
 def test_chat_endpoint_persists_session_across_two_requests():
     wire_fake_state(FakeLLMClient([
         tool_call_msg(("set_teams", {"team_a": "Celtics", "team_b": "Knicks"})),

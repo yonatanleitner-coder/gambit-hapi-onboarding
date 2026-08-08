@@ -10,6 +10,8 @@ not an oversight.
 """
 
 import json
+import logging
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import AsyncIterator
 
@@ -20,6 +22,15 @@ from .providers import VerdictProvider
 from .schemas import SSEEvent
 from .state import TradeState
 
+logger = logging.getLogger(__name__)
+
+# session_id is client-supplied and unauthenticated (auth is out of scope
+# per human-plan.md) -- without a cap, an attacker (or just many real
+# visitors) growing distinct session_ids forever is an unbounded-memory
+# DoS. A hard cap + oldest-evicted-first keeps a single process bounded
+# without adding a real eviction/TTL subsystem for a prototype.
+MAX_SESSIONS = 1000
+
 
 @dataclass
 class Session:
@@ -28,11 +39,20 @@ class Session:
 
 
 class SessionStore:
-    def __init__(self):
-        self._sessions: dict[str, Session] = {}
+    def __init__(self, max_sessions: int = MAX_SESSIONS):
+        self._sessions: "OrderedDict[str, Session]" = OrderedDict()
+        self._max_sessions = max_sessions
 
     def get_or_create(self, session_id: str) -> Session:
-        return self._sessions.setdefault(session_id, Session())
+        if session_id in self._sessions:
+            self._sessions.move_to_end(session_id)
+            return self._sessions[session_id]
+        if len(self._sessions) >= self._max_sessions:
+            evicted_id, _ = self._sessions.popitem(last=False)
+            logger.info("session store at capacity, evicted oldest session %s", evicted_id)
+        session = Session()
+        self._sessions[session_id] = session
+        return session
 
 
 def format_sse(event: dict) -> str:
@@ -67,12 +87,22 @@ async def handle_chat(
         ):
             yield format_sse(event)
         session.messages = final_state["messages"]
-    except Exception as exc:
+    except Exception:
         # Never disconnect silently -- an unexpected failure (a runaway-loop
         # GraphRecursionError, an uncaught API error) still gets a visible
         # error event before the stream ends, matching human-plan.md's
         # "illegal verdicts are never silent" bar extended to hard failures.
         # session.messages is deliberately NOT updated here, so the next
         # turn retries from the last known-good history.
-        yield format_sse({"event": "error", "data": {"kind": "server_error", "message": str(exc)}})
+        #
+        # The exception's own text is logged server-side, never sent to the
+        # client: str(exc) can carry internals (file paths, library repr,
+        # a partial stack) that are useful for us and meaningless -- or a
+        # disclosure risk -- for the user (A10: mishandling exceptional
+        # conditions should not leak internals).
+        logger.exception("unhandled error mid-turn")
+        yield format_sse({
+            "event": "error",
+            "data": {"kind": "server_error", "message": "Something went wrong on our end. Please try again."},
+        })
     yield format_sse({"event": "done", "data": {}})
