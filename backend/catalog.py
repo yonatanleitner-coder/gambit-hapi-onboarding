@@ -75,7 +75,7 @@ class ResolutionError(BaseModel):
     suggestions: list[str] = []
 
 
-def _resolve(query: str, choices: dict[str, str]) -> str | ResolutionError:
+def resolve_choice(query: str, choices: dict[str, str]) -> str | ResolutionError:
     """choices: normalized-name -> original label. Returns the matched
     normalized key, or a ResolutionError with human-readable suggestions."""
     q = query.strip().lower()
@@ -130,7 +130,7 @@ class Catalog:
             choices[t.name.lower()] = t.full_name
             choices[t.full_name.lower()] = t.full_name
             choices[t.abbreviation.lower()] = t.full_name
-        match = _resolve(query, choices)
+        match = resolve_choice(query, choices)
         if isinstance(match, ResolutionError):
             return match
         label = choices[match]
@@ -144,7 +144,7 @@ class Catalog:
         if team_id is not None:
             pool = [p for p in pool if p.teamId == team_id]
         choices = {p.name.lower(): p.name for p in pool}
-        match = _resolve(query, choices)
+        match = resolve_choice(query, choices)
         if isinstance(match, ResolutionError):
             return match
         label = choices[match]

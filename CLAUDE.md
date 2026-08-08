@@ -1,6 +1,6 @@
 # CLAUDE.md — Chat-first NBA Trade Machine
 
-Project memory for Claude Code. Read `docs/human-plan.md` (the contract) and `docs/ai-plan.md` (the how) before executing. Current stage: **AI Execute**, in progress. Tasks 1–4 (API spike, catalog + resolution, state + Phase + contracts, providers) done — see `docs/end-of-session.md`. Next: AI Plan §12 task 5 (LangGraph machine + tools).
+Project memory for Claude Code. Read `docs/human-plan.md` (the contract) and `docs/ai-plan.md` (the how) before executing. Current stage: **AI Execute**, in progress. Tasks 1–5 done (API spike, catalog + resolution, state + Phase + contracts, providers, LangGraph machine + tools) — see `docs/end-of-session.md`. **Task 5's LLM calls are not yet live-tested (no API key this session) — verify that before trusting the harness end-to-end.** Next: AI Plan §12 task 6 (LLMClient polish: caching + cost).
 
 ## Goal
 Conversation is the primary way to build, refine, and validate a two-team, multi-asset NBA trade. GUI mirrors chat state; verdicts render legibly in both. The deliverable proves a clean, bounded **LLM harness + tool boundary** — not a clever prompt.

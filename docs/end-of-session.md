@@ -4,8 +4,8 @@
 Build a chat-first interface to the bball-GM NBA Trade Machine where conversation is the primary way to construct, refine, and validate a two-team, multi-asset trade, with a live GUI mirror and verdicts rendered legibly in both chat and GUI — proving a clean, bounded LLM harness + tool boundary, not a clever prompt. See `docs/human-plan.md`.
 
 ## Status
-- **Done:** Human Thinking (MVP scoped via clarifying questions). `docs/human-plan.md` and `docs/ai-plan.md` drafted, revised once, and current. Full API contract confirmed from `bball-gm-engine-teardown.md`. **AI Plan §12 tasks 1–4 complete** (API spike, catalog + resolution, state + contracts, providers) — see below.
-- **In progress:** AI Execute proceeding task-by-task; tasks 5–12 not started. Three low-stakes steers still open (see Open questions).
+- **Done:** Human Thinking (MVP scoped via clarifying questions). `docs/human-plan.md` and `docs/ai-plan.md` drafted, revised once, and current. Full API contract confirmed from `bball-gm-engine-teardown.md`. **AI Plan §12 tasks 1–5 complete** (API spike, catalog + resolution, state + contracts, providers, LangGraph machine + tools) — see below.
+- **In progress:** AI Execute proceeding task-by-task; tasks 6–12 not started. Three low-stakes steers still open (see Open questions). **Task 5's interpret/respond LLM calls are not yet live-tested — no `ANTHROPIC_API_KEY` was available this session.** This is the single biggest open risk right now; see below.
 - **Blocked / not started:** No application code yet. `docs/qa-plan.md` and this file's final version are downstream.
 - **Repo housekeeping:** `origin` was already `yonatanleitner-coder/gambit-hapi-onboarding` (own repo, not the `gambit-lab` template) on feature branch `yonatan_project` — the repo-creation step was already done, correcting a stale note in an earlier version of this file. Docs and `CLAUDE.md` relocated from `claude-git-workshop/Docs/` to root `docs/` + root `CLAUDE.md` to match the delivery spec (project root, alongside `backend/`/`frontend/` to come); unrelated instructor-workshop PDFs/Figma file stayed in `claude-git-workshop/`.
 
@@ -41,6 +41,22 @@ Extended `catalog.py`'s `Team` model with `totalSalary`/`capSpace`/apron flags (
 
 30 tests passing across the backend.
 
+## LangGraph machine + tools (AI Plan §12 task 5) — done but NOT live-tested, 2026-08-08
+The graded core. `backend/tools.py`: phase-gated tool schema (`TOOLS_BY_PHASE` mirrors `ai-plan.md` §3's table exactly) + 7 executors (`set_teams`, `add_player`, `add_pick`, `route_pick`, `remove_player`, `remove_pick`, `request_verdict`), each resolving names via `catalog.py` then mutating `TradeState` — or returning a structured `{"error", "suggestions"}` dict, never raising. `backend/llm.py`: minimal `LLMClient` + `MODEL_POLICY` seam (prompt caching/cost capture deferred to task 6 as planned). `backend/graph.py`: 4-node LangGraph (`interpret → execute_tools → validate → respond`).
+
+**No `ANTHROPIC_API_KEY` was available this session** (flagged and confirmed with the human before building — see Human guidance given). Built the graph and tools anyway per the human's direction; verified everything that doesn't require a live model:
+- 16 new `tools.py` unit tests (phase gating, resolution scoping, duplicate/error recovery).
+- `graph.py` exercised end-to-end via a `FakeLLMClient` that plays back scripted Anthropic-shaped tool-call/text responses — `MockProvider` runs for real (deterministic, no network) so `validate()` is genuinely exercised. Covers: happy path to a verdict, a resolution error looping back to `interpret` instead of dead-ending, a hallucinated `request_verdict` before `HAS_ASSETS` being blocked by `tools.py`'s defense-in-depth phase check, and `recursion_limit` raising `GraphRecursionError` on a runaway loop.
+- **NOT verified:** an actual `interpret`/`respond` round trip against the real Anthropic API — message-format round-tripping (re-sending `response.content` blocks back as history) follows the common SDK idiom but is unconfirmed. **First thing to do once a key is available**, per the human's explicit direction ("build now, test later").
+
+Two deliberate deviations from the `ai-plan.md` §4 diagram as literally drawn (both are engineering clarifications, not scope changes — documented in `graph.py`'s module docstring too):
+1. `interpret` ends the turn directly (→ END) when it returns no tool calls, instead of routing through `respond`. Its own text (disambiguation, a "why illegal" answer, general conversation) already *is* the turn's answer; routing it through `respond` would trigger a second, redundant LLM call. A first draft did route through `respond` and a test caught the bug immediately (the fake script ran out of scripted responses because it correctly didn't expect a second call) — `respond` now exists specifically to narrate *structured* verdict/hard-error data that `interpret` never saw.
+2. `request_verdict` is still routed through `execute_tools` (as a no-op mutator with its own phase check) rather than short-circuiting directly from `interpret`, so a turn that mixes building calls and `request_verdict` in one LLM response (multi-intent is explicitly fine per §4) applies the building calls before checking whether a verdict was requested.
+
+Dependencies added: `anthropic==0.121.0`, `langgraph==1.2.10` (versions pinned to what actually installed, per this repo's existing convention).
+
+50 tests passing across the backend.
+
 ## Key decisions (this session)
 - **Stack:** Python/FastAPI backend + React/Vite (TS) frontend, **single Render web service** (FastAPI serves built SPA + `/api`; validate called server-side, no CORS, no key in browser). Chose Python because the harness is the graded core and it's the author's strength.
 - **Harness core = LangGraph state machine, ≤5 nodes** (`interpret → execute_tools → validate → respond`). Tools are **closed per phase** (`EMPTY → TEAMS_SET → HAS_ASSETS`); `request_verdict` is structurally unreachable until 2 teams + ≥1 asset exist. *Reversal:* earlier plan hand-rolled the loop; switched to LangGraph because the explicit goal of closed, state-bound tools makes the graph earn its complexity. **Tripwire:** if the graph exceeds ~5 nodes or fights the framework, drop to a hand-rolled FSM (brief permits; more transparent at this size).
@@ -60,6 +76,7 @@ Extended `catalog.py`'s `Team` model with `totalSalary`/`capSpace`/apron flags (
 - Verdict must appear in **both** chat and GUI, in prose — never raw JSON; illegal verdicts never silent.
 - Explainability + traceability are first-class (author works in AML/fintech — "trust and audit").
 - Adopt LangGraph for closed boundaries; keep it small.
+- **Task 5 without an API key: build now, verify live later.** Flagged before starting that `interpret`/`respond` need a real Claude call and no `ANTHROPIC_API_KEY` was set in this environment. Human chose to proceed with the graph/tools build (tested via a fake LLM client) rather than pause, deferring the live round-trip check to whenever a key is available. Treat that live check as unverified, not assumed-working, until it actually runs.
 - **Catalog resolution: keep silent auto-resolve on high-confidence typos** (task 2). `ai-plan.md` §3's worked example (`"Jaylen Browne"` → resolution error + suggestion, model disambiguates) was the original design; I flagged that my implementation instead auto-resolves typos above a 0.75 fuzzy-match ratio with no disambiguation turn. Human chose to keep the auto-resolve behavior over the plan's stricter example — noted here since it's a deliberate deviation from a plan example, not an oversight. Still requires exact/unambiguous-substring or high fuzzy-confidence; true ambiguity (multiple candidates, or low-confidence match) still returns `ResolutionError` + suggestions.
 
 ## Open questions
@@ -70,8 +87,8 @@ Extended `catalog.py`'s `Team` model with `totalSalary`/`capSpace`/apron flags (
 
 ## Continue from here
 - **Repo:** done — own public repo, feature branch `yonatan_project`. No further action needed here.
-- **Files present:** `docs/human-plan.md`, `docs/ai-plan.md`, this file, root `CLAUDE.md`, `requirements.txt`, `.gitignore`, `backend/{__init__.py,config.py,catalog.py,contracts.py,state.py,providers.py}`, `backend/tests/{test_catalog,test_state,test_contracts,test_providers}.py`.
-- **Next task:** AI Plan §12 **task 5 — LangGraph machine + tools.** The graded core: `interpret → execute_tools → validate → respond` nodes, phase-gated tool availability, tool executors wired to `catalog.py` resolution + `state.py` mutation + `providers.py`. Then proceed tasks 6→12.
+- **Files present:** `docs/human-plan.md`, `docs/ai-plan.md`, this file, root `CLAUDE.md`, `requirements.txt`, `.gitignore`, `backend/{__init__.py,config.py,catalog.py,contracts.py,state.py,providers.py,tools.py,llm.py,graph.py}`, `backend/tests/{test_catalog,test_state,test_contracts,test_providers,test_tools,test_graph}.py`.
+- **Next task:** AI Plan §12 **task 6 — LLMClient polish.** Add `cache_control` markers to the static system+tools prefix in `llm.py`, capture `response.usage` on every call, build `cost.py` (tokens → USD, `cost` event). **Before or alongside that: set `ANTHROPIC_API_KEY` and run a real `run_turn()` call** to confirm the message round-tripping in `graph.py` actually works against the live API — this is unverified and is the highest-risk unknown right now. Then proceed tasks 7→12.
 - **Reference:** `bball-gm-engine-teardown.md` (repo root) — request/response schema, confirmed live in the task 1 spike with no drift. Base URL `https://bball-gm.com/api` (open, no key).
 - **Commands:** `py -m venv .venv` (Windows, this session's Python was reached via the `py` launcher — plain `python`/`python3` weren't on PATH), `.venv/Scripts/python.exe -m pip install -r requirements.txt`, `.venv/Scripts/python.exe -m pytest backend/tests -q`.
 - **Demo URL:** none yet.
