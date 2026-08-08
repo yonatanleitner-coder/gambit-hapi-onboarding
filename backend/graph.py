@@ -28,9 +28,9 @@ docs/end-of-session.md):
    is fine per ai-plan.md §4) still applies the building calls before
    checking whether a verdict was requested.
 
-NOT YET LIVE-TESTED against a real model (no ANTHROPIC_API_KEY this
-session) -- see llm.py and backend/tests/test_graph.py, which exercises
-this graph with a fake LLM client.
+Live-verified end-to-end against the real Anthropic + bball-GM APIs
+(task 5 continuation, 2026-08-08) -- see docs/end-of-session.md. Also
+exercised offline via a fake LLM client in backend/tests/test_graph.py.
 """
 
 import json
@@ -123,20 +123,27 @@ def route_after_interpret(state: GraphState) -> str:
 
 async def execute_tools(state: GraphState) -> dict:
     trade, catalog = state["trade"], state["catalog"]
-    tool_results, diff_events = [], []
+    tool_results, out_events = [], []
     verdict_requested = False
 
     for block in state["pending_tool_uses"]:
         result = execute_tool(block.name, block.input, trade, catalog)
-        if block.name == "request_verdict" and "error" not in result:
+        if "error" in result:
+            # "suggestions" is always present on a ResolutionError.model_dump()
+            # (even if empty) but never on a pydantic ValidationError or a
+            # plain domain-rule rejection ("already in trade", etc.) -- a
+            # cheap, honest way to classify without a second error taxonomy.
+            kind = "resolution" if "suggestions" in result else "validation"
+            out_events.append({"event": "error", "data": {"kind": kind, "message": result["error"]}})
+        elif block.name == "request_verdict":
             verdict_requested = True
-        elif "error" not in result:
-            diff_events.append({"event": "state_diff", "data": result})
+        else:
+            out_events.append({"event": "state_diff", "data": result})
         tool_results.append(_tool_result(block.id, result))
 
     return {
         "messages": [{"role": "user", "content": tool_results}],
-        "events": diff_events,
+        "events": out_events,
         "verdict_requested": verdict_requested,
     }
 
@@ -245,3 +252,55 @@ async def run_turn(
         "hard_error": None,
     }
     return await graph.ainvoke(initial, config={"recursion_limit": recursion_limit})
+
+
+async def stream_turn(
+    *,
+    trade: TradeState,
+    catalog: Catalog,
+    provider: VerdictProvider,
+    llm: LLMClient,
+    messages: list[dict],
+    mock_provider: VerdictProvider | None = None,
+    recursion_limit: int = 15,
+    final_state_sink: dict | None = None,
+):
+    """Async generator yielding each event dict as soon as the node that
+    produced it completes -- what the SSE endpoint (task 7) streams to the
+    client turn-by-turn, instead of batching everything until the graph
+    finishes (run_turn's shape).
+
+    `stream_mode=["updates", "values"]` gives both in one pass: "updates"
+    yields each node's own return dict (already exactly the per-node event
+    delta -- no need to recompute it), "values" yields the fully-merged
+    state after every step. An async generator can't also `return` a value
+    the caller reads afterward, so the final merged state (needed to
+    persist session.messages once the turn ends) is written into
+    `final_state_sink` as a side effect instead, mirroring how `trade` is
+    already mutated in place by the tool executors.
+    """
+    graph = build_graph()
+    initial: GraphState = {
+        "messages": messages,
+        "events": [],
+        "trade": trade,
+        "catalog": catalog,
+        "provider": provider,
+        "mock_provider": mock_provider,
+        "llm": llm,
+        "pending_tool_uses": [],
+        "verdict_requested": False,
+        "verdict": None,
+        "hard_error": None,
+    }
+    async for mode, chunk in graph.astream(
+        initial, config={"recursion_limit": recursion_limit}, stream_mode=["updates", "values"],
+    ):
+        if mode == "values":
+            if final_state_sink is not None:
+                final_state_sink.clear()
+                final_state_sink.update(chunk)
+            continue
+        for update in chunk.values():
+            for event in update.get("events", []):
+                yield event

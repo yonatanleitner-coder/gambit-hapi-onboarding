@@ -5,7 +5,7 @@ Build a chat-first interface to the bball-GM NBA Trade Machine where conversatio
 
 ## Status
 - **Done:** Human Thinking (MVP scoped via clarifying questions). `docs/human-plan.md` and `docs/ai-plan.md` drafted, revised once, and current. Full API contract confirmed from `bball-gm-engine-teardown.md`. **AI Plan §12 tasks 1–5 complete** (API spike, catalog + resolution, state + contracts, providers, LangGraph machine + tools) — see below.
-- **In progress:** AI Execute proceeding task-by-task. **AI Plan §12 task 6 (LLMClient polish: caching + cost) complete** — see below. Tasks 7–12 not started. Three low-stakes steers still open (see Open questions). Task 5's biggest open risk (no live LLM test) resolved mid-session — human supplied `ANTHROPIC_API_KEY`, full harness verified live.
+- **In progress:** AI Execute proceeding task-by-task. **AI Plan §12 task 7 (SSE endpoint) complete** — see below. Tasks 8–12 not started. Three low-stakes steers still open (see Open questions). Task 5's biggest open risk (no live LLM test) resolved mid-session — human supplied `ANTHROPIC_API_KEY`, full harness verified live, including now over real HTTP.
 - **Blocked / not started:** No application code yet. `docs/qa-plan.md` and this file's final version are downstream.
 - **Repo housekeeping:** `origin` was already `yonatanleitner-coder/gambit-hapi-onboarding` (own repo, not the `gambit-lab` template) on feature branch `yonatan_project` — the repo-creation step was already done, correcting a stale note in an earlier version of this file. Docs and `CLAUDE.md` relocated from `claude-git-workshop/Docs/` to root `docs/` + root `CLAUDE.md` to match the delivery spec (project root, alongside `backend/`/`frontend/` to come); unrelated instructor-workshop PDFs/Figma file stayed in `claude-git-workshop/`.
 
@@ -64,6 +64,25 @@ Dependencies added: `anthropic==0.121.0`, `langgraph==1.2.10` (versions pinned t
 
 4 new tests (`test_cost.py`); 54 passing + 1 skipped without a key (55 with one).
 
+## SSE endpoint (AI Plan §12 task 7) — done and live-verified, 2026-08-09
+First real app scaffolding beyond `backend/`'s pure logic: `main.py` (FastAPI: `POST /api/chat`, `GET /api/health`), `harness.py` (session store + SSE formatting), `schemas.py` (`SSEEvent` envelope validation).
+
+Real streaming, not batch-and-flush: `graph.py` gained `stream_turn()` alongside `run_turn()`, using LangGraph's `astream(stream_mode=["updates","values"])` — probed empirically first (not guessed) to confirm `"updates"` yields each node's own return dict as it completes (exactly the per-node event delta, no recomputation needed) while `"values"` gives the fully-merged final state for persisting session messages once the turn ends. Verified via a live client that events arrive in true node-execution order, not all at once at the end.
+
+Two things added beyond the literal task 7 scope, both because they closed real gaps found while building:
+- **`error` events now fire for tool-execution failures, not just provider failures.** The SSE contract's `kind: resolution | validation` values had no emitter — `execute_tools` classifies each failed tool call as `resolution` (has a `suggestions` key, i.e. a name lookup failed) or `validation` (a pydantic arg error or domain-rule rejection) and emits an `error` event alongside the tool_result already fed back to the model, so the trace strip can surface these distinctly instead of only the model narrating them conversationally.
+- **`handle_chat` never lets a stream die silently.** An unhandled exception mid-turn (a `GraphRecursionError`, an uncaught API error) is caught and turned into a `{"kind":"server_error"}` event followed by `done`, instead of the HTTP connection just cutting off. `session.messages` is deliberately *not* updated on this path, so the next turn retries from the last known-good history rather than compounding on a half-applied one.
+
+**Live-verified over real HTTP, not just via ASGI TestClient:** ran `uvicorn backend.main:app` as an actual subprocess and `curl`'d `POST /api/chat` twice in the same session against the real Anthropic + bball-GM APIs. First turn: full tool-call sequence → verdict → assistant narration, correctly SSE-framed, ending in `done`. Second turn (same `session_id`, "why did Boston not need to match salary?"): correctly took the `interpret`-ends-directly path (no tool call needed, answered from conversation history) *and* got a real prompt-cache hit (`cached_tokens: 1153`) reusing the `HAS_ASSETS`-phase prefix cached by the first turn — confirms both session persistence and caching work correctly across separate real HTTP requests, not just within one process's memory during a single call.
+
+`TestClient` tests (`test_main.py`) deliberately skip FastAPI's lifespan by never using it as a context manager (verified empirically first) — `app.state` is populated with fakes directly, so the test suite never touches the real network or needs a key.
+
+11 new tests (`test_schemas.py`, `test_harness.py`, `test_main.py`, plus 3 more in `test_graph.py` for `stream_turn`/error-event classification); 68 passing + 1 skipped without a key.
+
+Added `fastapi==0.141.1`, `uvicorn==0.52.1`.
+
+**Not yet done:** serving the built frontend SPA (`StaticFiles` mount) — deferred to task 8/11 since `frontend/dist` doesn't exist yet; mounting it now against a missing directory would fail at startup.
+
 ## Key decisions (this session)
 - **Stack:** Python/FastAPI backend + React/Vite (TS) frontend, **single Render web service** (FastAPI serves built SPA + `/api`; validate called server-side, no CORS, no key in browser). Chose Python because the harness is the graded core and it's the author's strength.
 - **Harness core = LangGraph state machine, ≤5 nodes** (`interpret → execute_tools → validate → respond`). Tools are **closed per phase** (`EMPTY → TEAMS_SET → HAS_ASSETS`); `request_verdict` is structurally unreachable until 2 teams + ≥1 asset exist. *Reversal:* earlier plan hand-rolled the loop; switched to LangGraph because the explicit goal of closed, state-bound tools makes the graph earn its complexity. **Tripwire:** if the graph exceeds ~5 nodes or fights the framework, drop to a hand-rolled FSM (brief permits; more transparent at this size).
@@ -94,9 +113,9 @@ Dependencies added: `anthropic==0.121.0`, `langgraph==1.2.10` (versions pinned t
 
 ## Continue from here
 - **Repo:** done — own public repo, feature branch `yonatan_project`. No further action needed here.
-- **Files present:** `docs/human-plan.md`, `docs/ai-plan.md`, this file, root `CLAUDE.md`, `requirements.txt`, `.gitignore`, `.env` (local only, gitignored, real key — not present in a fresh clone), `.env.example` (committed, placeholder), `backend/{__init__.py,config.py,catalog.py,contracts.py,state.py,providers.py,tools.py,llm.py,graph.py,cost.py}`, `backend/tests/{test_catalog,test_state,test_contracts,test_providers,test_tools,test_graph,test_graph_live,test_cost}.py`.
-- **Next task:** AI Plan §12 **task 7 — SSE endpoint.** FastAPI `POST /api/chat` streaming the full event contract (`tool_call → state_diff → verdict → assistant → cost`) from `run_turn()`'s `events` list; `GET /api/health`. This is also where the app scaffold (FastAPI, static SPA serving) actually starts — nothing built yet beyond `backend/`. Then proceed tasks 8→12.
-- **Local dev setup:** `ANTHROPIC_API_KEY` is in the local `.env` from this session (not committed). A fresh clone needs to copy `.env.example` → `.env` and fill in a real key to run anything beyond `pytest backend/tests` (which skips the one test needing it).
+- **Files present:** `docs/human-plan.md`, `docs/ai-plan.md`, this file, root `CLAUDE.md`, `requirements.txt`, `.gitignore`, `.env` (local only, gitignored, real key — not present in a fresh clone), `.env.example` (committed, placeholder), `backend/{__init__.py,config.py,catalog.py,contracts.py,state.py,providers.py,tools.py,llm.py,graph.py,cost.py,schemas.py,harness.py,main.py}`, `backend/tests/{test_catalog,test_state,test_contracts,test_providers,test_tools,test_graph,test_graph_live,test_cost,test_schemas,test_harness,test_main}.py`.
+- **Next task:** AI Plan §12 **task 8 — Frontend.** React + Vite (TS): chat panel, GUI trade-panel mirror, verdict card, trace/cost strip — all rendering from the one SSE stream `POST /api/chat` already produces. `useTradeStream.ts` hook per `ai-plan.md` §10's file layout. Nothing in `frontend/` exists yet. Then proceed tasks 9→12.
+- **Local dev setup:** `ANTHROPIC_API_KEY` is in the local `.env` from this session (not committed). A fresh clone needs to copy `.env.example` → `.env` and fill in a real key to run anything beyond `pytest backend/tests` (which skips the one test needing it). To run the backend standalone: `.venv/Scripts/python.exe -m uvicorn backend.main:app --reload` (Windows path shown; adjust for the venv's actual location).
 - **Reference:** `bball-gm-engine-teardown.md` (repo root) — request/response schema, confirmed live in the task 1 spike with no drift. Base URL `https://bball-gm.com/api` (open, no key).
 - **Commands:** `py -m venv .venv` (Windows, this session's Python was reached via the `py` launcher — plain `python`/`python3` weren't on PATH), `.venv/Scripts/python.exe -m pip install -r requirements.txt`, `.venv/Scripts/python.exe -m pytest backend/tests -q`.
 - **Demo URL:** none yet.

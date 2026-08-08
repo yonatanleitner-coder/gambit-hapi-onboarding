@@ -16,7 +16,7 @@ import pytest
 from langgraph.errors import GraphRecursionError
 
 from backend.catalog import Catalog, Pick, Player, Team
-from backend.graph import run_turn
+from backend.graph import run_turn, stream_turn
 from backend.providers import MockProvider
 from backend.state import TradeState
 
@@ -180,3 +180,84 @@ def test_recursion_limit_guards_runaway_loop():
             messages=[{"role": "user", "content": "add Queta"}],
             recursion_limit=6,
         ))
+
+
+async def _collect_stream(**kwargs):
+    events = []
+    async for event in stream_turn(**kwargs):
+        events.append(event)
+    return events
+
+
+def test_stream_turn_yields_events_incrementally_and_fills_final_state_sink():
+    catalog = make_catalog()
+    llm = FakeLLMClient([
+        tool_call_msg(("set_teams", {"team_a": "Celtics", "team_b": "Knicks"})),
+        tool_call_msg(
+            ("add_player", {"player": "Queta", "from_team": "Celtics", "to_team": "Knicks"}),
+            ("add_player", {"player": "Drummond", "from_team": "Knicks", "to_team": "Celtics"}),
+        ),
+        tool_call_msg(("request_verdict", {})),
+        text_msg("Legal trade!"),
+    ])
+    sink = {}
+    events = asyncio.run(_collect_stream(
+        trade=TradeState(),
+        catalog=catalog,
+        provider=MockProvider(catalog),
+        llm=llm,
+        messages=[{"role": "user", "content": "Boston sends Queta to New York for Drummond"}],
+        final_state_sink=sink,
+    ))
+
+    event_names = [e["event"] for e in events]
+    # Events arrive in the order their node actually ran -- proves this is
+    # true incremental streaming, not a batch dumped at the end.
+    assert event_names.index("tool_call") < event_names.index("state_diff")
+    assert event_names.index("state_diff") < event_names.index("verdict")
+    assert event_names.index("verdict") < event_names.index("assistant")
+    assert any(e["event"] == "cost" for e in events)
+
+    # The sink is populated as a side effect once the generator is exhausted --
+    # this is how the caller (harness.py) gets the final messages/verdict
+    # without re-running the graph.
+    assert sink["verdict"] is not None
+    assert sink["trade"].team_ids == [2, 20]
+    assert len(sink["messages"]) > 0
+
+
+def test_execute_tools_emits_resolution_error_event():
+    catalog = make_catalog()
+    llm = FakeLLMClient([
+        tool_call_msg(("set_teams", {"team_a": "Celtics", "team_b": "Lakers"})),  # Lakers unresolvable
+        text_msg("Which team did you mean?"),  # interpret's retry turn -- ends the graph
+    ])
+    events = asyncio.run(_collect_stream(
+        trade=TradeState(),
+        catalog=catalog,
+        provider=MockProvider(catalog),
+        llm=llm,
+        messages=[{"role": "user", "content": "Celtics and Lakers"}],
+    ))
+    error_events = [e for e in events if e["event"] == "error"]
+    assert len(error_events) == 1
+    assert error_events[0]["data"]["kind"] == "resolution"
+
+
+def test_execute_tools_emits_validation_error_event_for_bad_tool_args():
+    catalog = make_catalog()
+    llm = FakeLLMClient([
+        # missing required 'to_team' -- pydantic validation failure inside execute_tool
+        tool_call_msg(("add_player", {"player": "Queta", "from_team": "Celtics"})),
+        text_msg("Which team should receive Queta?"),
+    ])
+    events = asyncio.run(_collect_stream(
+        trade=TradeState(team_ids=[2, 20]),
+        catalog=catalog,
+        provider=MockProvider(catalog),
+        llm=llm,
+        messages=[{"role": "user", "content": "add Queta"}],
+    ))
+    error_events = [e for e in events if e["event"] == "error"]
+    assert len(error_events) == 1
+    assert error_events[0]["data"]["kind"] == "validation"
