@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: gambit-trade-chat
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt && cd frontend && npm ci && npm run build"
+    startCommand: "uvicorn backend.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PROVIDER
+        value: api
+      - key: BBALL_GM_BASE
+        value: https://bball-gm.com/api

@@ -1,17 +1,18 @@
-"""FastAPI app (ai-plan.md §10): POST /api/chat (SSE), GET /api/health.
-
-Serving the built SPA is task 8/11's job -- frontend/dist doesn't exist
-yet, so no StaticFiles mount here (it would fail at startup against a
-missing directory anyway).
+"""FastAPI app (ai-plan.md §10): POST /api/chat (SSE), GET /api/health,
+plus the built SPA at "/" (ai-plan.md §11 -- one Render service serves
+both, so /trades/validate stays server-side, no CORS, no key in the
+browser).
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import anthropic
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .catalog import Catalog
@@ -25,6 +26,12 @@ from .providers import BballGmProvider, MockProvider
 # insecure design). 4000 chars is generous for a trade-building utterance
 # and cheap to raise later if a real user ever hits it.
 MAX_MESSAGE_LENGTH = 4000
+
+# frontend/dist only exists after `npm run build` (task 11's deploy build
+# step runs this; local API-only dev never needs to) -- mounting
+# conditionally means `uvicorn backend.main:app` still works standalone
+# against the Vite dev server (task 8's workflow) without a prior build.
+FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
 @asynccontextmanager
@@ -99,3 +106,12 @@ async def chat(req: ChatRequest, request: Request):
         mock_provider=state.mock_provider,
     )
     return StreamingResponse(stream, media_type="text/event-stream")
+
+
+# Mounted last and at "/" -- FastAPI matches the /api/* routes above first
+# for those exact paths, so this only ever serves the SPA's static assets
+# and index.html (html=True serves index.html for "/" and any unmatched
+# path, which is fine here: the app has no client-side router to conflict
+# with, see frontend/src/App.tsx).
+if FRONTEND_DIST.is_dir():
+    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="spa")

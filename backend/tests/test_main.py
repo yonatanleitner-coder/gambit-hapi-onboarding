@@ -5,11 +5,12 @@ in main.py's lifespan never runs. app.state is populated with fakes
 directly instead.
 """
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.catalog import Catalog, Player, Team
 from backend.harness import SessionStore
-from backend.main import app
+from backend.main import FRONTEND_DIST, app
 from backend.providers import MockProvider
 from backend.tests.test_graph import FakeLLMClient, text_msg, tool_call_msg
 
@@ -97,6 +98,15 @@ def test_responses_carry_baseline_security_headers():
     resp = client.get("/api/health")
     assert resp.headers["x-content-type-options"] == "nosniff"
     assert resp.headers["x-frame-options"] == "DENY"
+
+
+@pytest.mark.skipif(not FRONTEND_DIST.is_dir(), reason="frontend/dist not built (run `npm run build` in frontend/)")
+def test_spa_is_served_at_root_when_dist_is_built():
+    wire_fake_state(FakeLLMClient([]))
+    client = TestClient(app)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
 
 
 def test_chat_endpoint_persists_session_across_two_requests():
