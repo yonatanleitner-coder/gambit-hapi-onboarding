@@ -55,8 +55,17 @@ class FakeBlock:
 
 
 @dataclass
+class FakeUsage:
+    input_tokens: int = 100
+    output_tokens: int = 20
+    cache_creation_input_tokens: int = 0
+    cache_read_input_tokens: int = 0
+
+
+@dataclass
 class FakeMessage:
     content: list[Any]
+    usage: FakeUsage = field(default_factory=FakeUsage)
 
 
 class FakeLLMClient:

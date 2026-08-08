@@ -40,7 +40,8 @@ from langgraph.graph import END, START, StateGraph
 
 from .catalog import Catalog
 from .contracts import Verdict
-from .llm import LLMClient
+from .cost import compute_cost, cost_event
+from .llm import LLMClient, MODEL_POLICY
 from .providers import HardRuleViolation, ProviderUnavailable, VerdictProvider
 from .state import TradeState
 from .tools import execute_tool, tools_for_phase
@@ -97,6 +98,7 @@ async def interpret(state: GraphState) -> dict:
     )
     tool_uses = [b for b in response.content if b.type == "tool_use"]
     events = [{"event": "tool_call", "data": {"name": b.name, "args": b.input}} for b in tool_uses]
+    events.append(cost_event(compute_cost(MODEL_POLICY["interpret"], response.usage)))
     if not tool_uses:
         # Final intent with no tool call (disambiguation question, answering
         # "why illegal" from prior context, general conversation) -- this
@@ -189,7 +191,10 @@ async def respond(state: GraphState) -> dict:
     text = "".join(b.text for b in response.content if b.type == "text")
     return {
         "messages": [{"role": "assistant", "content": response.content}],
-        "events": [{"event": "assistant", "data": {"text": text}}],
+        "events": [
+            {"event": "assistant", "data": {"text": text}},
+            cost_event(compute_cost(MODEL_POLICY["respond"], response.usage)),
+        ],
     }
 
 
