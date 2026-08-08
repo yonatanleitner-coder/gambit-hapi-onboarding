@@ -4,8 +4,8 @@
 Build a chat-first interface to the bball-GM NBA Trade Machine where conversation is the primary way to construct, refine, and validate a two-team, multi-asset trade, with a live GUI mirror and verdicts rendered legibly in both chat and GUI — proving a clean, bounded LLM harness + tool boundary, not a clever prompt. See `docs/human-plan.md`.
 
 ## Status
-- **Done:** Human Thinking (MVP scoped via clarifying questions). `docs/human-plan.md` and `docs/ai-plan.md` drafted, revised once, and current. Full API contract confirmed from `bball-gm-engine-teardown.md`. **AI Plan §12 task 1 (API spike) complete.** **Task 2 (catalog + resolution) complete** — see below.
-- **In progress:** AI Execute proceeding task-by-task; tasks 3–12 not started. Three low-stakes steers still open (see Open questions).
+- **Done:** Human Thinking (MVP scoped via clarifying questions). `docs/human-plan.md` and `docs/ai-plan.md` drafted, revised once, and current. Full API contract confirmed from `bball-gm-engine-teardown.md`. **AI Plan §12 tasks 1–3 complete** (API spike, catalog + resolution, state + contracts) — see below.
+- **In progress:** AI Execute proceeding task-by-task; tasks 4–12 not started. Three low-stakes steers still open (see Open questions).
 - **Blocked / not started:** No application code yet. `docs/qa-plan.md` and this file's final version are downstream.
 - **Repo housekeeping:** `origin` was already `yonatanleitner-coder/gambit-hapi-onboarding` (own repo, not the `gambit-lab` template) on feature branch `yonatan_project` — the repo-creation step was already done, correcting a stale note in an earlier version of this file. Docs and `CLAUDE.md` relocated from `claude-git-workshop/Docs/` to root `docs/` + root `CLAUDE.md` to match the delivery spec (project root, alongside `backend/`/`frontend/` to come); unrelated instructor-workshop PDFs/Figma file stayed in `claude-git-workshop/`.
 
@@ -25,6 +25,12 @@ Resolution tiers, in order: exact match → unambiguous substring containment (h
 Two real bugs found and fixed via a live smoke test before trusting the unit tests alone:
 - Fuzzy matching against short candidates (3-letter team abbreviations) produced coincidentally-high `SequenceMatcher` ratios — `resolve_team("Queta")` was matching the Jazz (`"uta"` abbreviation) at exactly the auto-resolve threshold. Fixed by excluding candidates under 5 chars from the fuzzy tier; they only match exactly or by containment now.
 - (Caught during review, not a code bug) `ai-plan.md` §3's worked example treats a typo like `"Jaylen Browne"` as a resolution error requiring model disambiguation. The implementation instead auto-resolves high-confidence typos (ratio ≥ 0.75) silently. Flagged to the human; **kept the auto-resolve behavior** — see Human guidance given.
+
+## State + Phase + contracts (AI Plan §12 task 3) — done, 2026-08-08
+- `backend/contracts.py` now holds the pinned bball-GM schema (moved out of the session scratchpad — `TeamLeg`, `ValidateRequest`, `TeamVerdict`, `Verdict`, `ApiHardError`) plus the tool-argument models from `ai-plan.md` §3 (`SetTeamsArgs`, `AddPlayerArgs`, `AddPickArgs`, `RoutePickArgs`, `RemovePlayerArgs`, `RemovePickArgs`, `RequestVerdictArgs`). One test locks the `Verdict` model against the real illegal-trade shape captured in the task 1 spike, so API drift fails a test, not silently.
+- `backend/state.py`: `Phase` enum, `Asset` dataclass, `TradeState` dataclass with `phase()` (`EMPTY` unless exactly 2 team ids; `TEAMS_SET` until >=1 asset; else `HAS_ASSETS`) and `to_validate_request()` (projects the flat asset list into per-team `TeamLeg`s by grouping on `kind`/`from_team_id`/`to_team_id`). `route_pick`'s "flip `to_team_id` in place" atomicity claim is exercised directly: mutating one `Asset` field and re-projecting reflects the change with no other state touched.
+- 12 new tests (`test_state.py`, `test_contracts.py`); 22 passing total across the backend.
+- Nothing deferred or cut here — task 3 matched `ai-plan.md`'s design as written, no deviations to flag.
 
 ## Key decisions (this session)
 - **Stack:** Python/FastAPI backend + React/Vite (TS) frontend, **single Render web service** (FastAPI serves built SPA + `/api`; validate called server-side, no CORS, no key in browser). Chose Python because the harness is the graded core and it's the author's strength.
@@ -55,8 +61,8 @@ Two real bugs found and fixed via a live smoke test before trusting the unit tes
 
 ## Continue from here
 - **Repo:** done — own public repo, feature branch `yonatan_project`. No further action needed here.
-- **Files present:** `docs/human-plan.md`, `docs/ai-plan.md`, this file, root `CLAUDE.md`, `requirements.txt`, `.gitignore`, `backend/{__init__.py,config.py,catalog.py}`, `backend/tests/test_catalog.py`. `contracts.py` (pinned schema from the task 1 spike) still sits in the session scratchpad, not yet committed — move it into `backend/contracts.py` when task 3 (state + contracts) scaffolds `TradeState`/`Phase`.
-- **Next task:** AI Plan §12 **task 3 — state + Phase + projection + pydantic contracts.** Then proceed tasks 4→12.
+- **Files present:** `docs/human-plan.md`, `docs/ai-plan.md`, this file, root `CLAUDE.md`, `requirements.txt`, `.gitignore`, `backend/{__init__.py,config.py,catalog.py,contracts.py,state.py}`, `backend/tests/{test_catalog,test_state,test_contracts}.py`.
+- **Next task:** AI Plan §12 **task 4 — Providers.** `VerdictProvider` protocol, `BballGmProvider` (real, using the pinned `contracts.py` schema), `MockProvider` (deterministic), fallback on `ProviderUnavailable`/timeout, `source` badge. Then proceed tasks 5→12.
 - **Reference:** `bball-gm-engine-teardown.md` (repo root) — request/response schema, confirmed live in the task 1 spike with no drift. Base URL `https://bball-gm.com/api` (open, no key).
 - **Commands:** `py -m venv .venv` (Windows, this session's Python was reached via the `py` launcher — plain `python`/`python3` weren't on PATH), `.venv/Scripts/python.exe -m pip install -r requirements.txt`, `.venv/Scripts/python.exe -m pytest backend/tests -q`.
 - **Demo URL:** none yet.
