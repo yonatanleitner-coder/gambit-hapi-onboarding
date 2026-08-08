@@ -222,5 +222,27 @@ Server stopped cleanly after verification; no process left running.
 
 ## Continue from here (updated)
 - `docs/qa-plan.md` now exists — both automated and manual sections, per this session's explicit requirement that the QA plan cover both, not lean on one alone.
-- Next task is still **AI Plan §12 task 10 — Playwright happy path**, followed by task 11 (deploy) and task 12 (docs pass, including the README rewrite flagged above).
+- Task 10 is now done (see below); next is task 11 (deploy) and task 12 (docs pass, including the README rewrite flagged above).
 - No new environment setup needed beyond what task 8/9 already documented (portable Node + PATH export, `.venv` + `.env`).
+
+---
+
+# Playwright happy path (AI Plan §12 task 10) — done and live-passing, 2026-08-09
+
+The brief's bonus automated-browser-test criterion. New root-level `package.json` (`@playwright/test`, separate from `frontend/package.json` — this is an e2e harness for the built app, not an app dependency, matching `ai-plan.md` §10's file layout), `playwright.config.ts`, `tests/happy_path.spec.ts`.
+
+**Derived directly from `golden/cases.yaml`'s `legal_two_team` case** — same utterance, same expected tool sequence, same expected outcome — but proves something the golden-case eval structurally can't: that the real rendered UI (chat bubble + GUI mirror) agrees with itself, not just that the graph produced the right events. The test asserts the verdict card in chat (legal, no raw JSON in the bubble) *and* the trade panel (both team names, both assets, correct phase badge) independently, since the panel is populated via `state_diff` events and the chat verdict via the `verdict` event — two different code paths that could in principle drift.
+
+`playwright.config.ts` uses a two-entry `webServer` array (backend `uvicorn` with `PROVIDER=mock` for deterministic CBA math + frontend `vite dev`) so `npx playwright test` boots both dev servers itself — no manual "start two terminals" step. `interpret`/`respond` still make real Anthropic calls (same reasoning as the golden cases: NLU is the thing under test, and there's no fake-LLM path wired into the real server), so this needs `ANTHROPIC_API_KEY` in the environment, same as the golden-case eval.
+
+**Real bug hit and fixed, not a test-writing mistake:** the `webServer` backend command was written as `.venv/Scripts/python.exe -m uvicorn ...` (forward slashes, matching every other command in this repo's docs). Node spawns `webServer` commands through `cmd.exe` on Windows, and `cmd.exe` parsed the forward-slash path as `.venv` (the command) followed by `/Scripts/python.exe` (a switch-like argument), failing with `'.venv' is not recognized as an internal or external command`. Fixed by backslash-escaping that one command (`String.raw` template literal) — every other command in this repo is invoked through git-bash or a Python subprocess that doesn't have this quirk, so this is the first place Windows's `cmd.exe` path-parsing behavior actually mattered.
+
+A second, expected fix: the initial selector `page.getByRole('button', { name: 'Send' })` matched 2 elements (the composer's submit button *and* the empty-state's example-prompt button, which starts with "Send Boston's...") — Playwright's strict mode correctly refused to guess. Fixed with `{ name: 'Send', exact: true }`.
+
+**Live-verified, not just "it compiled":** ran `npx playwright test` for real against the live Anthropic + `MockProvider` (verdict math only) stack — real browser (Chromium), real SSE stream, real multi-tool-call turn (`set_teams` → `add_player` → `request_verdict` → narration). Passed in ~18s. Confirmed no leftover `uvicorn`/`vite` processes after the run (Playwright's `webServer` lifecycle tears both down cleanly).
+
+Chromium was already cached locally from task 8's scratch Playwright install (`~/AppData/Local/ms-playwright/`), so `npx playwright install chromium` was a no-op this session — worth knowing if a fresh machine needs the ~150MB download the first time.
+
+`.gitignore` gained `test-results/`, `playwright-report/`, `blob-report/`, `playwright/.cache/` (Playwright's own run artifacts — never meant to be committed, unlike the test file itself). Root `package-lock.json` is committed alongside `package.json`, matching the same pinning discipline as `frontend/`'s lockfile.
+
+**Not done:** no CI wiring (out of scope — the brief doesn't require a full pipeline); no cross-browser matrix (Chromium only, documented as a known gap in `docs/qa-plan.md`).
