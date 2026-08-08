@@ -4,8 +4,8 @@
 Build a chat-first interface to the bball-GM NBA Trade Machine where conversation is the primary way to construct, refine, and validate a two-team, multi-asset trade, with a live GUI mirror and verdicts rendered legibly in both chat and GUI — proving a clean, bounded LLM harness + tool boundary, not a clever prompt. See `docs/human-plan.md`.
 
 ## Status
-- **Done:** Human Thinking (MVP scoped via clarifying questions). `docs/human-plan.md` and `docs/ai-plan.md` drafted, revised once, and current. Full API contract confirmed from `bball-gm-engine-teardown.md`. **AI Plan §12 tasks 1–3 complete** (API spike, catalog + resolution, state + contracts) — see below.
-- **In progress:** AI Execute proceeding task-by-task; tasks 4–12 not started. Three low-stakes steers still open (see Open questions).
+- **Done:** Human Thinking (MVP scoped via clarifying questions). `docs/human-plan.md` and `docs/ai-plan.md` drafted, revised once, and current. Full API contract confirmed from `bball-gm-engine-teardown.md`. **AI Plan §12 tasks 1–4 complete** (API spike, catalog + resolution, state + contracts, providers) — see below.
+- **In progress:** AI Execute proceeding task-by-task; tasks 5–12 not started. Three low-stakes steers still open (see Open questions).
 - **Blocked / not started:** No application code yet. `docs/qa-plan.md` and this file's final version are downstream.
 - **Repo housekeeping:** `origin` was already `yonatanleitner-coder/gambit-hapi-onboarding` (own repo, not the `gambit-lab` template) on feature branch `yonatan_project` — the repo-creation step was already done, correcting a stale note in an earlier version of this file. Docs and `CLAUDE.md` relocated from `claude-git-workshop/Docs/` to root `docs/` + root `CLAUDE.md` to match the delivery spec (project root, alongside `backend/`/`frontend/` to come); unrelated instructor-workshop PDFs/Figma file stayed in `claude-git-workshop/`.
 
@@ -31,6 +31,15 @@ Two real bugs found and fixed via a live smoke test before trusting the unit tes
 - `backend/state.py`: `Phase` enum, `Asset` dataclass, `TradeState` dataclass with `phase()` (`EMPTY` unless exactly 2 team ids; `TEAMS_SET` until >=1 asset; else `HAS_ASSETS`) and `to_validate_request()` (projects the flat asset list into per-team `TeamLeg`s by grouping on `kind`/`from_team_id`/`to_team_id`). `route_pick`'s "flip `to_team_id` in place" atomicity claim is exercised directly: mutating one `Asset` field and re-projecting reflects the change with no other state touched.
 - 12 new tests (`test_state.py`, `test_contracts.py`); 22 passing total across the backend.
 - Nothing deferred or cut here — task 3 matched `ai-plan.md`'s design as written, no deviations to flag.
+
+## Providers (AI Plan §12 task 4) — done, 2026-08-08
+`backend/providers.py`: `VerdictProvider` protocol; `BballGmProvider` (real, `POST /trades/validate`, 6s timeout); `MockProvider` (deterministic salary-matching approximation using `Catalog` + the cap-tier table from `bball-gm-engine-teardown.md`, explicitly labeled non-authoritative). Two distinct exceptions instead of one generic failure: `ProviderUnavailable` (network/timeout/unexpected status — the harness's fallback-to-mock trigger, task 5) vs. `HardRuleViolation` (the API's own `400 {error}` channel — a working API correctly rejecting a hard rule; must NOT fall back to mock, must surface to the user per human-plan's two-distinct-channels requirement). `Verdict` gained a `source: Literal["api","mock"] = "api"` field (contracts.py) so every verdict can be badged; `MockProvider` sets `source="mock"` explicitly.
+
+Extended `catalog.py`'s `Team` model with `totalSalary`/`capSpace`/apron flags (present in the live `/teams` response, not previously captured) since `MockProvider` needs them.
+
+**Live smoke test caught a real bug** before it shipped: `TeamLeg.model_dump()` serializes `isSignAndTrade: None` as JSON `null`, and the live API's schema rejects an explicit `null` for that optional field (wants it omitted) — every real-provider call was failing as a false `HardRuleViolation`. Fixed with `model_dump(exclude_none=True)`; regression test added (`test_bball_gm_provider_omits_none_fields_from_request_body`). Also reassuring: `MockProvider`'s simplified math independently agreed with both live verdicts from the task 1 spike (legal Queta↔Drummond, illegal George-for-Drummond) on first try.
+
+30 tests passing across the backend.
 
 ## Key decisions (this session)
 - **Stack:** Python/FastAPI backend + React/Vite (TS) frontend, **single Render web service** (FastAPI serves built SPA + `/api`; validate called server-side, no CORS, no key in browser). Chose Python because the harness is the graded core and it's the author's strength.
@@ -61,8 +70,8 @@ Two real bugs found and fixed via a live smoke test before trusting the unit tes
 
 ## Continue from here
 - **Repo:** done — own public repo, feature branch `yonatan_project`. No further action needed here.
-- **Files present:** `docs/human-plan.md`, `docs/ai-plan.md`, this file, root `CLAUDE.md`, `requirements.txt`, `.gitignore`, `backend/{__init__.py,config.py,catalog.py,contracts.py,state.py}`, `backend/tests/{test_catalog,test_state,test_contracts}.py`.
-- **Next task:** AI Plan §12 **task 4 — Providers.** `VerdictProvider` protocol, `BballGmProvider` (real, using the pinned `contracts.py` schema), `MockProvider` (deterministic), fallback on `ProviderUnavailable`/timeout, `source` badge. Then proceed tasks 5→12.
+- **Files present:** `docs/human-plan.md`, `docs/ai-plan.md`, this file, root `CLAUDE.md`, `requirements.txt`, `.gitignore`, `backend/{__init__.py,config.py,catalog.py,contracts.py,state.py,providers.py}`, `backend/tests/{test_catalog,test_state,test_contracts,test_providers}.py`.
+- **Next task:** AI Plan §12 **task 5 — LangGraph machine + tools.** The graded core: `interpret → execute_tools → validate → respond` nodes, phase-gated tool availability, tool executors wired to `catalog.py` resolution + `state.py` mutation + `providers.py`. Then proceed tasks 6→12.
 - **Reference:** `bball-gm-engine-teardown.md` (repo root) — request/response schema, confirmed live in the task 1 spike with no drift. Base URL `https://bball-gm.com/api` (open, no key).
 - **Commands:** `py -m venv .venv` (Windows, this session's Python was reached via the `py` launcher — plain `python`/`python3` weren't on PATH), `.venv/Scripts/python.exe -m pip install -r requirements.txt`, `.venv/Scripts/python.exe -m pytest backend/tests -q`.
 - **Demo URL:** none yet.

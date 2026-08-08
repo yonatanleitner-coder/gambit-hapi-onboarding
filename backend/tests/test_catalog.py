@@ -1,8 +1,12 @@
 from backend.catalog import Catalog, Pick, Player, ResolutionError, Team
 
 TEAMS = [
-    Team(id=2, name="Celtics", abbreviation="BOS", city="Boston"),
-    Team(id=20, name="Knicks", abbreviation="NYK", city="New York"),
+    Team(id=2, name="Celtics", abbreviation="BOS", city="Boston",
+         totalSalary=201669287, capSpace=-36669287, isOverCap=True,
+         isOverLuxuryTax=True, isOverFirstApron=False, isOverSecondApron=False),
+    Team(id=20, name="Knicks", abbreviation="NYK", city="New York",
+         totalSalary=217563917, capSpace=-52563917, isOverCap=True,
+         isOverLuxuryTax=True, isOverFirstApron=True, isOverSecondApron=False),
 ]
 PLAYERS = [
     Player(id=16998, name="Neemias Queta", teamId=2, teamName="Celtics",

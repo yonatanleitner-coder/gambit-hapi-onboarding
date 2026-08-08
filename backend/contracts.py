@@ -6,6 +6,8 @@ Verdict/ValidateRequest confirmed live 2026-08-08 against three real calls
 See docs/end-of-session.md for the spike notes.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -45,6 +47,7 @@ class Verdict(BaseModel):
     summary: str
     appliedRules: list[str] = []
     teams: list[TeamVerdict]
+    source: Literal["api", "mock"] = "api"  # badged by VerdictProvider (task 4); absent from the raw bball-GM payload
 
 
 class ApiHardError(BaseModel):

@@ -29,6 +29,12 @@ class Team(BaseModel):
     name: str
     abbreviation: str
     city: str
+    totalSalary: int
+    capSpace: int
+    isOverCap: bool
+    isOverLuxuryTax: bool
+    isOverFirstApron: bool
+    isOverSecondApron: bool
 
     @property
     def full_name(self) -> str:
