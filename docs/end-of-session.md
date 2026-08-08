@@ -141,6 +141,44 @@ All 5 cases pass live. Full backend suite with a key present: 77 passed (0 skipp
 - **Trace + cost strip:** collapsed-by-default (default) or always visible?
 - **Human Plan edits:** replace illustrative money figures with real synthetic values (backfill from `GET /api/players` during the API spike); confirm the "why I'm the right person" framing reads in the author's voice.
 
+---
+
+# Checkpoint — 2026-08-09 (continued): branding, landing page, closed-list pickers, stream reliability
+
+Same-day continuation after the security/qa-plan checkpoint and task 10. Two rounds of work, both committed and pushed (`20cea84`).
+
+## Branding + landing page + closed-list pickers
+- Incorporated the user-supplied Gambit logo (horse/basketball mark): cropped icon in the compact header, full lockup on the landing screen, new favicon (`frontend/public/gambit-logo.png`, `gambit-mark.png`). Both styled as rounded/shadowed "badges" rather than fighting the source image's baked-in light background — a flood-fill transparency attempt was tried first and discarded (the artwork's intentionally textured/distressed border defeated a clean cutout).
+- The empty chat state is now a real landing section: what the app does, a 4-step how-to-interact list, above the existing example prompts.
+- **Closed-list pickers**, the "just like bball-GM" ask for users who don't know exact names: `TeamPicker.tsx` (two team dropdowns on the landing screen) and `AssetPicker.tsx` (a "+ Add from list" control per GUI panel column, scoped to that team's real roster). New backend endpoint `GET /api/teams/{id}/assets` (players + picks for a team, from the already-loaded `Catalog`) backs the latter. **Both pickers only draft a chat utterance and send it through the normal composer path** — they do not mutate `TradeState` directly. This was a deliberate design constraint: the brief's non-negotiable is that tools are the *only* state mutators, and a second, click-driven mutation path would have quietly reopened exactly the thing the harness is supposed to close off. Verified live end-to-end (screenshots): team picker → real `set_teams` tool call → GUI mirror updates; asset picker → real `add_player` tool call → GUI + chat both update.
+
+## Stream reliability fix (real bug, caught live)
+While testing, restarting the backend process mid-conversation (to pick up code changes) left the user's browser tab with a rendered-but-incomplete assistant message and a permanently stuck "thinking" indicator — no error, no recovery. Root-caused to: a killed backend process's connection isn't always signaled cleanly through Vite's dev proxy, so the frontend's `fetch()` reader can wait forever for bytes that will never arrive. This was initially misdiagnosed as possible `max_tokens` truncation; live reproduction attempts against the real API ruled that out (actual responses used well under the 1024-token cap).
+
+Fixed in `useTradeStream.ts`: a 30-second inactivity timeout on the SSE stream, reset on every received frame (so a genuinely slow turn is never penalized). On timeout, the fetch aborts and a clear "lost the connection, try again" message renders instead of a silent hang. **Verified live, not just reasoned about:** a script that starts a real turn and kills the backend process an instant later confirmed the fix recovers cleanly (composer re-enables, visible error) where the prior code would have hung. This is also real insurance for production — a Render restart or network blip mid-turn now degrades to a retryable error instead of a stuck UI.
+
+## AI Plan §12 task 11 (deploy) — prep done, actual deploy still pending
+`backend/main.py` now conditionally mounts `frontend/dist` as `StaticFiles` at `/` (only when the directory exists, so local API-only dev is unaffected), verified locally by running a second instance on a spare port and confirming both `/` (SPA) and `/api/*` serve correctly from one origin — the exact shape Render will run. `render.yaml` added at repo root with the build/start commands and env vars from `ai-plan.md` §11.
+
+**What's still outstanding:** actually creating the Render service. This requires the human's own Render account (OAuth through Render's dashboard to connect the GitHub repo) — not something completable from this session. Exact steps are already in chat history / can be re-given on request: Render dashboard → New → Blueprint → connect `yonatanleitner-coder/gambit-hapi-onboarding` on branch `yonatan_project` → it auto-detects `render.yaml` → paste `ANTHROPIC_API_KEY` when prompted → Apply.
+
+## Human guidance given (this session)
+- Wanted to see the app running live, not just told it works — a real browser window was opened against the local dev servers throughout, and every feature (pickers, branding) was interactively verified via Playwright screenshots/scripts before being reported as done, not just build-checked.
+- Caught a real live bug themselves (the stuck stream) via direct use of the running app rather than a prepared test case — a good reminder that live human use surfaces failure modes a scripted eval won't.
+
+## Open questions (carried forward)
+- Prompt-cache breakpoint on growing conversation history (flagged in the earlier checkpoint) — still not implemented, still the highest-leverage remaining data-engineering improvement.
+- `docs/architecture-diagram.pdf` — still deliberately untracked, pending a decision on whether to commit it.
+
+## Continue from here (2026-08-09 end of day)
+- **Local dev servers were stopped cleanly** at end of session — nothing left running. Next session: source `.env`, then backend (`.venv/Scripts/python.exe -m uvicorn backend.main:app --reload`) and frontend (`cd frontend && npm run dev`, Node needs the portable-PATH export from task 8's notes) same as before.
+- **Next task:** actually deploy to Render (finish task 11 — needs the human at the dashboard), then task 12 (docs pass: **README is still the onboarding-task template, not a project README** — real, confirmed gap from the earlier checkpoint, still not fixed; final `end-of-session.md` pass; PR).
+- All work through this point is committed and pushed to `origin/yonatan_project` at `20cea84`.
+
+## Do not regress (additions)
+- Closed-list pickers (`TeamPicker`, `AssetPicker`) must keep drafting chat messages only — never call a mutating endpoint directly. If this pattern is extended (e.g. a picks picker, a remove-asset picker), keep the same constraint.
+- The SSE idle-timeout (`STREAM_IDLE_TIMEOUT_MS` in `useTradeStream.ts`) must stay in place — it's the only thing standing between a dead connection and a permanently stuck chat UI.
+
 ## Continue from here
 - **Repo:** done — own public repo, feature branch `yonatan_project`. No further action needed here.
 - **Files present:** `docs/human-plan.md`, `docs/ai-plan.md`, this file, root `CLAUDE.md`, `requirements.txt`, `.gitignore`, `.env` (local only, gitignored, real key — not present in a fresh clone), `.env.example` (committed, placeholder), `backend/{__init__.py,config.py,catalog.py,contracts.py,state.py,providers.py,tools.py,llm.py,graph.py,cost.py,schemas.py,harness.py,main.py}`, `backend/tests/{test_catalog,test_state,test_contracts,test_providers,test_tools,test_graph,test_graph_live,test_cost,test_schemas,test_harness,test_main,test_golden}.py`, `frontend/` (React + Vite + TS), and now `golden/{__init__.py,cases.yaml,run_golden.py}`.
