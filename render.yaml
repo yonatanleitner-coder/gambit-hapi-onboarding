@@ -12,3 +12,11 @@ services:
         value: api
       - key: BBALL_GM_BASE
         value: https://bball-gm.com/api
+      # Pins the same interpreter used in local dev/CI. Render's default
+      # (currently 3.14.x) is newer than pydantic-core 2.23.4 has a
+      # prebuilt wheel for, which forces a source build via Rust/maturin
+      # that then fails on Render's read-only build filesystem. The
+      # .python-version file in the repo root pins this too (belt and
+      # suspenders -- this env var wins if both are present).
+      - key: PYTHON_VERSION
+        value: 3.13.5
