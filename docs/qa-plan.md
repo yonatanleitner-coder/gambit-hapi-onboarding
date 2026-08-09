@@ -37,7 +37,7 @@ Out of scope for this plan (see `human-plan.md`'s deferred-scope section for why
 
 ## Manual checks
 
-Run against the live URL once deployed (or `http://localhost:5173` locally with the backend on `:8000`). Each step names the expected result — if it doesn't match, that's a fail, not a judgment call.
+Run against the live URL — **https://gambit-hapi-onboarding.onrender.com/** — or `http://localhost:5173` locally with the backend on `:8000`. Each step names the expected result — if it doesn't match, that's a fail, not a judgment call. (Checks 1–4, 9's core assertion, and the security spot-checks in 15 were run against the live URL as part of `docs/deployment-smoke-test.md`; the rest are still pending a full manual pass.)
 
 1. **Load the app.** Chat shows an empty state with example prompts; GUI panel shows no teams. No console errors.
 2. **"Set up a trade between the Boston Celtics and the New York Knicks."** GUI panel fills in both team names (not raw ids); chat replies in prose asking what to trade — no JSON visible anywhere.

@@ -73,7 +73,7 @@ render.yaml       Render Blueprint spec (see Deployment below for how this repo 
 
 ## Running locally
 
-Requires Python 3.11+ and Node 20+.
+Requires Python 3.13 (pinned in `.python-version` — a newer default on some platforms has no prebuilt wheel for one of the pydantic dependencies yet) and Node 20+.
 
 ```bash
 # clone and enter
@@ -123,6 +123,8 @@ One Render web service serves both `/api/*` and the built frontend from the same
 4. Env vars: `ANTHROPIC_API_KEY` (secret), `PROVIDER=api`, `BBALL_GM_BASE=https://bball-gm.com/api`
 
 One consequence of this path: no auto-deploy on push. New commits need a manual **Deploy latest commit** click in the Render dashboard. Free-tier services also spin down after 15 minutes idle — expect ~1 minute cold start on the first request after a quiet period.
+
+The live URL above has passed a full smoke test against the real Anthropic + bball-GM APIs (health, security headers, catalog endpoints, input validation, and an end-to-end trade verified in both a raw API call and a real browser) — see [`docs/deployment-smoke-test.md`](./docs/deployment-smoke-test.md) for the complete results.
 
 ## Design notes & honesty about scope
 
