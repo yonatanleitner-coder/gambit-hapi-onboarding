@@ -1,0 +1,78 @@
+# Golden cases -- the measurable-behavior reference (ai-plan.md §9, §12
+# task 9). Real utterances replayed through the real interpret/respond
+# loop (real Anthropic calls); MockProvider stands in for CBA validation
+# math (deterministic, no network, no CBA-accuracy risk on that half --
+# PROVIDER=mock per ai-plan.md's comment on this file).
+#
+# Names/ids are pinned against the live bball-gm.com catalog as
+# confirmed 2026-08-09. That dataset is synthetic but has been observed
+# stable across this whole session; if it's ever regenerated, these
+# cases will need re-pinning against fresh data -- the same risk any
+# test carries against a live third-party dataset it doesn't control.
+#
+# route_pick has no valid destination in a strictly-two-team trade
+# (routing back to a pick's own origin is explicitly rejected by
+# backend/tools.py's exec_route_pick, and there's no third team to route
+# *to* in v1 scope -- see docs/end-of-session.md). pick_routing_refine
+# below exercises the realistic equivalent instead: swapping which pick
+# is in the trade via add_pick + remove_pick.
+
+cases:
+  - name: legal_two_team
+    turns:
+      - "Set up a trade between the Boston Celtics and the New York Knicks: Boston sends Neemias Queta to New York for Andre Drummond. Then get me a verdict."
+    expect:
+      tools_used: [set_teams, add_player, request_verdict]
+      verdict: legal
+
+  - name: illegal_apron
+    turns:
+      - "Set up a trade between the Boston Celtics and the New York Knicks: Boston sends Paul George to New York for Andre Drummond. Then get me a verdict."
+    expect:
+      tools_used: [set_teams, add_player, request_verdict]
+      verdict: illegal
+
+  - name: pick_routing_refine
+    turns:
+      - "Set up a trade between the Boston Celtics and the New York Knicks: Boston sends their 2027 first-round pick to New York for Andre Drummond."
+      # NOT "2031 first": Boston holds two distinct 2031 1sts (its own
+      # plus the 76ers' via an earlier trade) -- genuinely ambiguous by
+      # year+round alone (see backend/tests/test_catalog.py's ambiguous-
+      # pick test, added after this was caught live). "2033 first" is
+      # confirmed unique for Boston.
+      - "Actually, send Boston's 2033 first instead of the 2027 first."
+    expect:
+      # Only the reliably-ordered first-turn prefix is asserted here --
+      # a real model swaps the pick via add_pick+remove_pick in turn 2,
+      # but which one fires first is legitimately either order (confirmed
+      # live: one run did remove-then-add). final_assets is the
+      # authoritative check for turn 2's outcome.
+      tools_used: [set_teams, add_pick, add_player]
+      final_assets: ["2033 1st", "Andre Drummond"]
+
+  - name: ambiguous_name
+    turns:
+      # Deliberately NOT a real/famous player (e.g. "Michael Jordan"):
+      # confirmed live that the model recognizes an unambiguously
+      # real-world retired legend and asks a clarifying question WITHOUT
+      # even attempting the tool call -- arguably better behavior, but it
+      # means no resolution error ever fires, which defeats this case's
+      # actual purpose (testing the resolution-error mechanism itself).
+      # A plausible-but-fake name forces a real lookup attempt.
+      - "Set up a trade between the Boston Celtics and the New York Knicks: Boston sends Marcus Webb to New York for Andre Drummond."
+    expect:
+      tools_used: [set_teams]
+      resolution_error: true
+      # Each tool call is independent (ai-plan.md §3: "tool errors are
+      # results, never exceptions") -- Boston's failed add_player doesn't
+      # roll back New York's independent, valid one. Confirmed live: the
+      # first assumption here (nothing added at all) was wrong.
+      final_assets: ["Andre Drummond"]
+
+  - name: remove_asset
+    turns:
+      - "Set up a trade between the Boston Celtics and the New York Knicks: Boston sends Neemias Queta to New York for Andre Drummond."
+      - "Actually, remove Neemias Queta from the trade."
+    expect:
+      tools_used: [set_teams, add_player, remove_player]
+      final_assets: ["Andre Drummond"]
