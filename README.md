@@ -2,7 +2,7 @@
 
 Conversation is the primary way to build, refine, and validate a two-team, multi-asset NBA trade. Natural language flows through a bounded **LangGraph tool-calling harness** — never a regex parser, never a single mega-prompt returning JSON — and a GUI panel mirrors the resulting trade state live, in sync with chat.
 
-**Live demo:** _add the Render URL here once deployed_
+**Live demo:** https://gambit-hapi-onboarding.onrender.com/
 
 Built as a HAPI Flow onboarding exercise ([`gambit-onboarding-task.md`](./gambit-onboarding-task.md)). Full design reasoning lives in [`docs/human-plan.md`](./docs/human-plan.md) (the contract) and [`docs/ai-plan.md`](./docs/ai-plan.md) (the implementation plan); session-by-session decisions and known gaps are tracked in [`docs/end-of-session.md`](./docs/end-of-session.md).
 

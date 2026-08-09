@@ -179,6 +179,26 @@ Fixed in `useTradeStream.ts`: a 30-second inactivity timeout on the SSE stream, 
 - Closed-list pickers (`TeamPicker`, `AssetPicker`) must keep drafting chat messages only — never call a mutating endpoint directly. If this pattern is extended (e.g. a picks picker, a remove-asset picker), keep the same constraint.
 - The SSE idle-timeout (`STREAM_IDLE_TIMEOUT_MS` in `useTradeStream.ts`) must stay in place — it's the only thing standing between a dead connection and a permanently stuck chat UI.
 
+---
+
+# Checkpoint — 2026-08-09 (continued again): task 11 done — deployed and smoke-tested live
+
+## Deploy blocker and how it was actually resolved
+The human's GitHub identity is under an org that restricts third-party OAuth app authorization, so Render's normal "connect your GitHub repo" flow (a GitHub App install) was never going to work — this was surfaced by the human, not discovered by trial and error. Solved by using Render's **"Public Git Repository"** service-creation path instead, which clones over a plain HTTPS URL and needs no GitHub authorization at all. Confirmed first that the repo is actually public (it is — `private: false` via the GitHub API, required by the brief anyway). Trade-off, documented in the README: no auto-deploy on push and no blueprint auto-detection with this path — settings are entered by hand in the dashboard (values match `render.yaml` exactly) and future deploys need a manual "Deploy latest commit" click.
+
+## Real deploy bug hit and fixed
+First build attempt failed. Render defaulted to **Python 3.14.3** (its current newest default for new services, unrelated to anything in this repo), and `pydantic-core==2.23.4` has no prebuilt wheel for 3.14 yet — pip fell back to compiling it from source via Rust/maturin, which then failed because Render's build filesystem is read-only for the cargo registry cache. Not a real dependency problem, just an unpinned interpreter version colliding with Render's rolling default. Fixed by adding a `.python-version` file pinning `3.13.5` (the exact version already proven throughout local development) — this is Render's documented mechanism for pinning the build interpreter, confirmed via their docs before making the change rather than guessed. Also mirrored as a `PYTHON_VERSION` env var in `render.yaml` for anyone who later uses the Blueprint flow instead. Second build succeeded.
+
+## Live smoke test — full results in `docs/deployment-smoke-test.md`
+10 checks run against the actual public URL (not localhost): health, security headers, SPA serving, teams catalog, team-scoped assets (closed-list picker data), empty/oversized message rejection, a full real trade turn at the API level (real Anthropic + real bball-GM, `source: "api"`), and the same trade driven through a real browser against the live URL — confirming the verdict card (chat) and the trade panel (GUI) independently agree, reached via two different SSE event types. All 10 passed. Real per-turn cost observed in production ($0.0414 for a 4-tool-call turn) matched what local testing had already shown, confirming cost accounting isn't a local-only artifact.
+
+## README updated with the live URL
+`README.md`'s "Live demo" line, previously a placeholder, now points at https://gambit-hapi-onboarding.onrender.com/.
+
+## Continue from here
+- **AI Plan §12 task 11 is done.** Only task 12 remains: a final docs pass (this file's closing version) and opening the PR (description should point at `docs/human-plan.md`, `docs/ai-plan.md`, this file, `docs/qa-plan.md`, and the live URL, per the brief's PR template).
+- Live URL: https://gambit-hapi-onboarding.onrender.com/. Remember it needs a **manual redeploy** from the Render dashboard if any further commits are made before the PR is opened — this path doesn't auto-deploy.
+
 ## Continue from here
 - **Repo:** done — own public repo, feature branch `yonatan_project`. No further action needed here.
 - **Files present:** `docs/human-plan.md`, `docs/ai-plan.md`, this file, root `CLAUDE.md`, `requirements.txt`, `.gitignore`, `.env` (local only, gitignored, real key — not present in a fresh clone), `.env.example` (committed, placeholder), `backend/{__init__.py,config.py,catalog.py,contracts.py,state.py,providers.py,tools.py,llm.py,graph.py,cost.py,schemas.py,harness.py,main.py}`, `backend/tests/{test_catalog,test_state,test_contracts,test_providers,test_tools,test_graph,test_graph_live,test_cost,test_schemas,test_harness,test_main,test_golden}.py`, `frontend/` (React + Vite + TS), and now `golden/{__init__.py,cases.yaml,run_golden.py}`.
